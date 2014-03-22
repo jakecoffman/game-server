@@ -13,13 +13,21 @@
 <div class="container" ng-show="state=='ok'">
 	<div class="row">
 		<h1>Waiting for players</h1>
+		<p>Scan this code to join or enter this URL manually:</p>
 		<p>
-			Scan this code to join or enter this URL manually: <br/>
 			<a href="http://localhost:3000/#/game/{{id}}">http://localhost:3000/#/game/{{id}}</a>
-		<p>
-		<center>
-			<qrcode data="http://localhost:3000/#/game/{{id}}" version="5" size="300"></qrcode>
-		</center>
+		</p>
+		
+		<div class="col-sm-9">
+			<center>
+				<qrcode data="http://localhost:3000/#/game/{{id}}" version="5" size="400"></qrcode>
+			</center>
+		</div>
+		<div class="col-sm-3">
+			<button class="btn btn-primary btn-lg">Start game</button>
+		</div>	
+	</div>
+	<div class="row">
 		<h2>Players Connected</h2>
 		<ul>
 			<li>Player1</li>

@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"github.com/codegangsta/martini"
+	"github.com/gorilla/websocket"
 	"github.com/martini-contrib/render"
 
 	"github.com/coopernurse/gorp"
@@ -10,11 +11,13 @@ import (
 )
 
 func main() {
+	connections = make(map[string]*websocket.Conn)
 	m := martini.Classic()
 
 	m.Use(render.Renderer())
 
 	m.Post("/game", NewGame)
+	m.Get("/ws/:id", wsHandler)
 
 	m.Map(initDb("dev.db"))
 

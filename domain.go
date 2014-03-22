@@ -8,11 +8,12 @@ const (
 )
 
 type Player struct {
-	Id   int  `json:"id"`
-	Role Role `json:"role"`
+	Id   int    `json:"id"`
+	Game string `json:"string"`
+	Role Role   `json:"role"`
+	Host bool   `json:"host"`
 }
 
 type Game struct {
-	Id      string   `json:"id"` // UUID
-	Players []Player `json:"players"`
+	Id string `json:"id"` // UUID
 }

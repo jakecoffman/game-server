@@ -23,13 +23,13 @@ app.controller("HomeCtl", function($scope, $http, $location){
 			alert(err.message);
 		})
 	}
-})
+});
 
 app.controller('GameCtl', function($scope, $http, $routeParams){
 	$scope.id = $routeParams.id;
 	$scope.state = "waiting";
 
-	var conn = new WebSocket("ws://localhost:3000/ws");
+	var conn = new WebSocket("ws://localhost:3000/ws/" + $scope.id);
 
 	conn.onclose = function(e){
 		$scope.$apply(function(){
@@ -41,7 +41,7 @@ app.controller('GameCtl', function($scope, $http, $routeParams){
 
 	conn.onopen = function(e){
 		$scope.$apply(function(){
-			alert("CONNECTED");
+			console.log("CONNECTED");
 			console.log(e);
 			$scope.state = "ok";
 		});
@@ -49,7 +49,6 @@ app.controller('GameCtl', function($scope, $http, $routeParams){
 
 	conn.onmessage = function(e){
 		$scope.$apply(function(){
-			alert("MESSAGE");
 			console.log(e);
 		});
 	};
