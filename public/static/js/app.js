@@ -25,31 +25,55 @@ app.controller("HomeCtl", function($scope, $http, $location){
 	}
 });
 
-app.controller('GameCtl', function($scope, $http, $routeParams){
+app.controller('GameCtl', function($scope, $http, $routeParams, $http){
 	$scope.id = $routeParams.id;
 	$scope.state = "waiting";
 
-	var conn = new WebSocket("ws://localhost:3000/ws/" + $scope.id);
-
-	conn.onclose = function(e){
-		$scope.$apply(function(){
-			console.log(e);
-			$scope.state = "error";
-			$scope.error = e;
-		});
-	};
-
-	conn.onopen = function(e){
-		$scope.$apply(function(){
-			console.log("CONNECTED");
-			console.log(e);
+	$http({
+		method: "GET",
+		url: "/game/" + $scope.id
+	}).success(function(data) {
+		$scope.isHost = data.host;
+		if($scope.isHost){
+			$scope.connectWs();
+		} else {
 			$scope.state = "ok";
-		});
-	};
+		}
+	}).error(function(data, status){
+		alert("Failed to get game with status " + status);
+		console.log(data);
+	});
 
-	conn.onmessage = function(e){
-		$scope.$apply(function(){
-			console.log(e);
-		});
-	};
+	$scope.connectWs = function(){
+		var conn = new WebSocket("ws://localhost:3000/ws/" + $scope.id);
+
+		conn.onclose = function(e){
+			$scope.$apply(function(){
+				console.log(e);
+				$scope.state = "error";
+				$scope.error = e;
+			});
+		};
+
+		conn.onopen = function(e){
+			$scope.$apply(function(){
+				console.log("CONNECTED");
+				$scope.state = "ok";
+			});
+		};
+
+		conn.onmessage = function(e){
+			$scope.$apply(function(){
+				console.log(e);
+				var msg = JSON.parse(e.data);
+				switch(msg.type) {
+					case "host":
+						$scope.isHost = msg.host;
+						break;
+					default:
+						console.log("Unknown message type: " + msg.type);
+				}
+			});
+		};
+	}
 });

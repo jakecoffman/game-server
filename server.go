@@ -5,18 +5,24 @@ import (
 	"github.com/codegangsta/martini"
 	"github.com/gorilla/websocket"
 	"github.com/martini-contrib/render"
+	"github.com/martini-contrib/sessions"
 
 	"github.com/coopernurse/gorp"
 	_ "github.com/mattn/go-sqlite3"
 )
 
+var connections map[string]*websocket.Conn
+
 func main() {
 	connections = make(map[string]*websocket.Conn)
 	m := martini.Classic()
 
+	store := sessions.NewCookieStore([]byte("secret123"))
+	m.Use(sessions.Sessions("my_session", store))
 	m.Use(render.Renderer())
 
 	m.Post("/game", NewGame)
+	m.Get("/game/:id", GetGame)
 	m.Get("/ws/:id", wsHandler)
 
 	m.Map(initDb("dev.db"))
