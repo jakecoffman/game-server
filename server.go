@@ -2,11 +2,13 @@ package main
 
 import (
 	"database/sql"
+	"encoding/gob"
 	"github.com/codegangsta/martini"
 	"github.com/gorilla/websocket"
 	"github.com/martini-contrib/render"
 	"github.com/martini-contrib/sessions"
 
+	"os"
 	"github.com/coopernurse/gorp"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -14,10 +16,15 @@ import (
 var connections map[string]*websocket.Conn
 
 func main() {
+	// so we can save these to the session, save database queries
+	gob.Register(&Player{})
+
 	connections = make(map[string]*websocket.Conn)
 	m := martini.Classic()
 
 	store := sessions.NewCookieStore([]byte("secret123"))
+	wd, _ := os.Getwd()
+	store.Options(sessions.Options{Path: wd})
 	m.Use(sessions.Sessions("my_session", store))
 	m.Use(render.Renderer())
 

@@ -29,16 +29,13 @@ app.controller('GameCtl', function($scope, $http, $routeParams, $http){
 	$scope.id = $routeParams.id;
 	$scope.state = "waiting";
 
+	// Have to do an initial GET... workaround for martini sessions
 	$http({
 		method: "GET",
 		url: "/game/" + $scope.id
 	}).success(function(data) {
 		$scope.isHost = data.host;
-		if($scope.isHost){
-			$scope.connectWs();
-		} else {
-			$scope.state = "ok";
-		}
+		$scope.connectWs();
 	}).error(function(data, status){
 		alert("Failed to get game with status " + status);
 		console.log(data);

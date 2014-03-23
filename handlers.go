@@ -12,21 +12,34 @@ import (
 	"github.com/nu7hatch/gouuid"
 )
 
-func NewGame(r render.Render, db *gorp.DbMap, log *log.Logger) {
+func NewGame(r render.Render, db *gorp.DbMap, session sessions.Session, log *log.Logger) {
+	session.Clear()
+
 	u, err := uuid.NewV4()
 	if err != nil {
-		log.Printf("UUID fail: %v\n", err)
+		log.Printf("UUID fail: %#v\n", err)
 		r.JSON(500, map[string]string{"message": "can't generate UUID for some reason"})
 		return
 	}
 	game := &Game{Id: u.String()}
 	err = db.Insert(game)
 	if err != nil {
-		log.Printf("Insert fail: %v", err)
+		log.Printf("Insert fail: %#v", err)
 		r.JSON(500, map[string]string{"message": "Failed to create game"})
 		return
 	}
 	log.Println("New game started, UUID is " + u.String())
+
+	// TODO: Require logins to create a new game, for now every new game gives you new player
+	player := &Player{Game: game.Id, Role: Host}
+	err = db.Insert(player)
+	if err != nil {
+		log.Printf("New player could not be inserted")
+		return
+	}
+
+	session.Set("player", player)
+
 	r.JSON(200, map[string]string{"uuid": u.String()})
 }
 
@@ -34,72 +47,56 @@ func GetGame(r render.Render, p martini.Params, db *gorp.DbMap, session sessions
 	gameId := p["id"]
 	obj, err := db.Get(Game{}, gameId)
 	if err != nil {
-		log.Printf("Error querying DB: %v", err)
+		log.Printf("Error querying DB: %#v", err)
 		return
 	}
 	if obj == nil {
-		log.Printf("No such game: %v", gameId)
+		log.Printf("No such game: %#v", gameId)
 		return
 	}
 	game := obj.(*Game)
 
-	var player *Player
-
 	// see if player is rejoining
-	id := session.Get("player")
-	log.Printf("Returning player id is: %#v", id)
-
-	if id == nil {
+	sPlayer := session.Get("player")
+	var player *Player
+	if sPlayer == nil {
 		// no, it's a new player
 		player = &Player{Game: game.Id}
-	} else {
-		// get player from DB and see if they are a part of this game
-		obj, err = db.Get(Player{}, id)
-		if err != nil {
-			log.Printf("Failed getting player: %v", err)
-			return
-		}
-		if obj == nil {
-			// player's session ID is screwed up or the server lost everything: new player
-			player = &Player{Game: game.Id}
-		} else {
-			player = obj.(*Player)
-			if player.Game != game.Id {
-				// TODO: Allow this.
-				log.Printf("Player tried to join a new game: %v", player)
-				return
-			}
-		}
-	}
 
-	// check if there are any other players in the game already, if not this is the host
-	count, err := db.SelectInt("select count(*) from players where game=?", game.Id)
-	if err != nil {
-		log.Printf("Failed to check if other players in game: %v", err)
-		return
-	}
-	if count == 0 {
-		player.Role = Host
-	}
-
-	// save to db so we can find them if they disconnect
-	if player.Id == 0 {
+		// save to db so we can find them if they disconnect
 		err = db.Insert(player)
 		if err != nil {
 			log.Printf("New player could not be inserted")
 			return
 		}
+		session.Set("player", player)
+	} else {
+		player = sPlayer.(*Player)
+		// are they a part of this game?
+		if player.Game != game.Id {
+			// TODO: Allow this. Is player joining this game? Are they just watching?
+			log.Printf("Player tried to join game %#v: %#v", game.Id, player)
+			return
+		}
+		log.Printf("Returning player id is: %#v", player.Id)
 	}
-	session.Set("player", player.Id)
+
 	// write something to the connection to get this to save?
 	log.Printf("Setting player's id to %#v", player.Id)
 
+	// inform the UI of who this is
 	if player.Role == Host {
 		r.JSON(200, map[string]interface{}{"type": "host", "host": true})
 	} else {
 		r.JSON(200, map[string]interface{}{"type": "host", "host": false})
 	}
 }
+
+type gameRelation struct {
+	Players []Player
+}
+
+var gameMap map[string]gameRelation
 
 func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, p martini.Params, db *gorp.DbMap, session sessions.Session, log *log.Logger) {
 	conn, err := websocket.Upgrade(w, req, nil, 1024, 1024)
@@ -114,7 +111,6 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, p mart
 	gameId := p["id"]
 	connections[gameId] = conn
 	defer delete(connections, gameId)
-	conn.WriteJSON(map[string]string{"hi": "yo"})
 
 	log.Println("Succesfully upgraded connection")
 
