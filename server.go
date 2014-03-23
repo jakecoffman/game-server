@@ -3,13 +3,12 @@ package main
 import (
 	"database/sql"
 	"encoding/gob"
+
 	"github.com/codegangsta/martini"
+	"github.com/coopernurse/gorp"
 	"github.com/gorilla/websocket"
 	"github.com/martini-contrib/render"
 	"github.com/martini-contrib/sessions"
-
-	"os"
-	"github.com/coopernurse/gorp"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -23,9 +22,8 @@ func main() {
 	m := martini.Classic()
 
 	store := sessions.NewCookieStore([]byte("secret123"))
-	wd, _ := os.Getwd()
-	store.Options(sessions.Options{Path: wd})
-	m.Use(sessions.Sessions("my_session", store))
+	store.Options(sessions.Options{HttpOnly: false})
+	m.Use(sessions.Sessions("mafia", store))
 	m.Use(render.Renderer())
 
 	m.Post("/game", NewGame)
