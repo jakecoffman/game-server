@@ -136,6 +136,7 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 			err := conn.ReadJSON(msg)
 			if err != nil {
 				playerDisconnect(Games, gameId, *player)
+				Games[gameId].Comm <- map[string]interface{}{"type": "leave"}
 				return
 			}
 			log.Printf("%#v", msg)
@@ -168,9 +169,6 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 	} else {
 		// Tell the host we've joined
 		Games[gameId].Comm <- map[string]interface{}{"type": "join"}
-		defer func() {
-			Games[gameId].Comm <- map[string]interface{}{"type": "leave"}
-		}()
 		for {
 			select {
 			case msg := <-wsReadChan: // player website action
