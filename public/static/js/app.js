@@ -28,6 +28,7 @@ app.controller("HomeCtl", function($scope, $http, $location){
 app.controller('GameCtl', function($scope, $http, $routeParams, $http){
 	$scope.id = $routeParams.id;
 	$scope.state = "waiting";
+	$scope.players = [];
 
 	// Have to do an initial GET... workaround for martini sessions
 	$http({
@@ -66,6 +67,9 @@ app.controller('GameCtl', function($scope, $http, $routeParams, $http){
 				switch(msg.type) {
 					case "host":
 						$scope.isHost = msg.host;
+						break;
+					case "players":
+						$scope.players = msg.players;
 						break;
 					default:
 						console.log("Unknown message type: " + msg.type);
