@@ -24,7 +24,7 @@
 			</center>
 		</div>
 		<div class="col-sm-3">
-			<button class="btn btn-primary btn-lg">Start game</button>
+			<button class="btn btn-primary btn-lg" ng-click="start()">Start game</button>
 		</div>	
 	</div>
 	<div class="row">
@@ -37,5 +37,15 @@
 <div class="container" ng-show="state=='ok' && isHost == false">
 	<div class="row">
 		Welcome, player!
+	</div>
+</div>
+<div class="container" ng-show="state=='start' && isHost == true">
+	<div class="row">
+		Host start
+	</div>
+</div>
+<div class="container" ng-show="state=='start' && isHost == false">
+	<div class="row">
+		Player start
 	</div>
 </div>

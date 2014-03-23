@@ -42,6 +42,11 @@ app.controller('GameCtl', function($scope, $http, $routeParams, $http){
 		console.log(data);
 	});
 
+	$scope.send = function(msg){}; // dummy to avoid errors?
+	$scope.start = function(){
+		$scope.send({type: "start"});
+	};
+
 	$scope.connectWs = function(){
 		var conn = new WebSocket("ws://localhost:3000/ws/" + $scope.id);
 
@@ -71,10 +76,17 @@ app.controller('GameCtl', function($scope, $http, $routeParams, $http){
 					case "players":
 						$scope.players = msg.players;
 						break;
+					case "start":
+						$scope.state = "start";
+						break;
 					default:
 						console.log("Unknown message type: " + msg.type);
 				}
 			});
 		};
+
+		$scope.send = function(msg){
+			conn.send(JSON.stringify(msg));
+		}
 	}
 });
