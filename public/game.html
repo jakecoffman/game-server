@@ -10,7 +10,13 @@
 		<pre>{{error}}</pre>
 	</div>
 </div>
-<div class="container" ng-show="state=='ok' && isHost == true">
+<div class="container" ng-show="state=='closed'">
+	<div class="row">
+		<h1>Closed</h1>
+		<p>Connection was closed, refresh to reconnect</p>
+	</div>
+</div>
+<div class="container" ng-show="state=='lobby' && isHost == true">
 	<div class="row">
 		<h1>Waiting for players</h1>
 		<p>Scan this code to join or enter this URL manually:</p>
@@ -34,7 +40,7 @@
 		</ul>
 	</div>
 </div>
-<div class="container" ng-show="state=='ok' && isHost == false">
+<div class="container" ng-show="state=='lobby' && isHost == false">
 	<div class="row">
 		Welcome, player!
 	</div>

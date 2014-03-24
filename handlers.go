@@ -21,7 +21,7 @@ func NewGame(r render.Render, db *gorp.DbMap, session sessions.Session, log *log
 		r.JSON(500, map[string]string{"message": "can't generate UUID for some reason"})
 		return
 	}
-	game := &Game{Id: u.String()}
+	game := &Game{Id: u.String(), State: "lobby"}
 	err = db.Insert(game)
 	if err != nil {
 		log.Printf("Insert fail: %#v", err)
@@ -126,12 +126,30 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 	player.comm = make(chan map[string]interface{})
 
 	// TODO: Thread safety
+	// Check if game exists
 	if _, ok := Games[gameId]; !ok {
 		log.Printf("No such game")
 		return
 	}
+	// Add them to the game in progress
 	Games[gameId].Players = append(Games[gameId].Players, player)
 	defer playerDisconnect(Games, gameId, *player)
+
+	// get the game from the db to load the state, other info
+	g, err := db.Get(Game{}, gameId)
+	if err != nil {
+		log.Printf("Unable to find game %v", gameId)
+		return
+	}
+	game := g.(*Game)
+
+	// get the other players that are in the game?
+	var players []Player
+	_, err = db.Select(&players, "select * from players where game=?", gameId)
+	if err != nil {
+		log.Printf("Unable to find players in game: %#v", err)
+		return
+	}
 
 	// start a goroutine dedicated to listening to the websocket
 	wsReadChan := make(chan map[string]interface{})
@@ -152,16 +170,29 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 	}()
 
 	if player.Role == Host {
+		log.Printf("Host is connected: %#v", player)
 		player.conn.WriteJSON(map[string]interface{}{
 			"type":    "players",
 			"players": Games[gameId].Players,
+		})
+		player.conn.WriteJSON(map[string]interface{}{
+			"type":  "state",
+			"state": game.State,
 		})
 		for {
 			select {
 			case msg := <-wsReadChan: // host website action
 				switch {
-				case msg["type"] == "start":
-					log.Printf("Sending start to all players")
+				case msg["type"] == "state":
+					log.Printf("Got state change request from host: %v", msg["state"])
+					// TODO: check to make sure this is a valid state
+					game.State = msg["state"].(string)
+					count, err := db.Update(game)
+					if err != nil || count == 0 {
+						log.Printf("Unable to change game state: %v", err)
+						return
+					}
+					log.Printf("Sending state %v to all players", msg["state"])
 					for i, p := range Games[gameId].Players {
 						if p.Id == player.Id {
 							continue
@@ -170,7 +201,9 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 						Games[gameId].Players[i].comm <- msg
 						log.Printf("Message sent to player %#v", p.Id)
 					}
-					player.conn.WriteJSON(map[string]interface{}{"type": "start"})
+					// send back to host since it worked
+					// TODO: send error if it didn't
+					player.conn.WriteJSON(msg)
 				default:
 					log.Printf("Unknown web message from host: %#v", msg)
 				}
@@ -191,6 +224,11 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 			}
 		}
 	} else {
+		log.Printf("Player is connected: %#v", player)
+		player.conn.WriteJSON(map[string]interface{}{
+			"type":  "state",
+			"state": game.State,
+		})
 		// Tell the host we've joined
 		Games[gameId].Comm <- map[string]interface{}{"type": "join"}
 		for {
@@ -200,15 +238,11 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 				default:
 					log.Printf("Unknown web message from player: %#v", msg)
 				}
-			case msg := <-player.comm:
+			case msg := <-player.comm: // messages from host
 				// it may be safe to just take any message from the host and just send it
-				switch {
-				case msg["type"] == "start":
-					log.Printf("Sending %v to player %v", msg["type"], player.Id)
-					player.conn.WriteJSON(msg)
-				default:
-					log.Printf("Unknown message from host: %#v", msg)
-				}
+				log.Printf("Sending %v to player %v", msg["type"], player.Id)
+				player.conn.WriteJSON(msg)
+
 			}
 		}
 	}

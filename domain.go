@@ -22,8 +22,8 @@ type Player struct {
 }
 
 type Game struct {
-	Id      string   `json:"id"` // UUID
-	Players []Player `db:"-"`
+	Id    string `json:"id"` // UUID
+	State string `json:"state"`
 }
 
 // These structures are not currently saved to the database and represent games in progress

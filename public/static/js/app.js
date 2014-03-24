@@ -44,7 +44,7 @@ app.controller('GameCtl', function($scope, $http, $routeParams, $http){
 
 	$scope.send = function(msg){}; // dummy to avoid errors?
 	$scope.start = function(){
-		$scope.send({type: "start"});
+		$scope.send({type: "state", state: "start"});
 	};
 
 	$scope.connectWs = function(){
@@ -53,7 +53,7 @@ app.controller('GameCtl', function($scope, $http, $routeParams, $http){
 		conn.onclose = function(e){
 			$scope.$apply(function(){
 				console.log(e);
-				$scope.state = "error";
+				$scope.state = "closed";
 				$scope.error = e;
 			});
 		};
@@ -61,7 +61,6 @@ app.controller('GameCtl', function($scope, $http, $routeParams, $http){
 		conn.onopen = function(e){
 			$scope.$apply(function(){
 				console.log("CONNECTED");
-				$scope.state = "ok";
 			});
 		};
 
@@ -76,8 +75,8 @@ app.controller('GameCtl', function($scope, $http, $routeParams, $http){
 					case "players":
 						$scope.players = msg.players;
 						break;
-					case "start":
-						$scope.state = "start";
+					case "state":
+						$scope.state = msg.state;
 						break;
 					default:
 						console.log("Unknown message type: " + msg.type);
