@@ -46,6 +46,9 @@ app.controller('GameCtl', function($scope, $http, $routeParams, $http){
 	$scope.start = function(){
 		$scope.send({type: "state", state: "start"});
 	};
+	$scope.move = function(space) {
+		$scope.send({type: "move", move: space});
+	}
 
 	$scope.connectWs = function(){
 		var conn = new WebSocket("ws://localhost:3000/ws/" + $scope.id);
@@ -77,6 +80,9 @@ app.controller('GameCtl', function($scope, $http, $routeParams, $http){
 						break;
 					case "state":
 						$scope.state = msg.state;
+					case "update":
+						$scope.state = msg.state;
+						$scope.board = msg.board;
 						break;
 					default:
 						console.log("Unknown message type: " + msg.type);

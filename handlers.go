@@ -74,7 +74,8 @@ func GetGame(r render.Render, params martini.Params, db *gorp.DbMap, session ses
 	if sPlayer == nil {
 		// no, it's a new player
 		player = &Player{
-			Game: game.Id,
+			Game:     game.Id,
+			ThisTurn: -1,
 		}
 
 		// save to db so we can find them if they disconnect
@@ -187,23 +188,40 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 					log.Printf("Got state change request from host: %v", msg["state"])
 					// TODO: check to make sure this is a valid state
 					game.State = msg["state"].(string)
+					if game.State == "start" {
+						err = game.setBoard([]int{0, 0, 0, 0, 0, 0, 0, 0, 0})
+						if err != nil {
+							log.Printf("Unable to set game board: %#v", err)
+							return
+						}
+					}
 					count, err := db.Update(game)
 					if err != nil || count == 0 {
 						log.Printf("Unable to change game state: %v", err)
 						return
 					}
 					log.Printf("Sending state %v to all players", msg["state"])
+					board, err := game.getBoard()
+					if err != nil {
+						log.Printf("Error getting board: %#v", board)
+					}
 					for i, p := range Games[gameId].Players {
-						if p.Id == player.Id {
+						if p.Role == Host { // this will hang everything
 							continue
 						}
 						log.Printf("Trying to sent to player %#v", p.Id)
-						Games[gameId].Players[i].comm <- msg
+						Games[gameId].Players[i].comm <- map[string]interface{}{
+							"type":  "update",
+							"board": board,
+							"state": "start",
+						}
 						log.Printf("Message sent to player %#v", p.Id)
 					}
-					// send back to host since it worked
-					// TODO: send error if it didn't
-					player.conn.WriteJSON(msg)
+					player.conn.WriteJSON(map[string]interface{}{
+						"type":  "update",
+						"board": board,
+						"state": "start",
+					})
 				default:
 					log.Printf("Unknown web message from host: %#v", msg)
 				}
@@ -218,6 +236,60 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 						"type":    "players",
 						"players": Games[gameId].Players,
 					})
+				case msg["type"] == "move":
+					resolveRound := true
+					for _, p := range Games[gameId].Players {
+						if p.Role != Host && p.ThisTurn == -1 {
+							resolveRound = false
+						}
+					}
+					if !resolveRound {
+						continue
+					}
+					// all players have set their moves, update the board and send it out
+					thisRound := []int{0, 0, 0, 0, 0, 0, 0, 0, 0}
+					for _, p := range Games[gameId].Players {
+						if p.Role != Host {
+							if thisRound[p.ThisTurn] == 0 {
+								thisRound[p.ThisTurn] = p.Id
+							} else {
+								thisRound[p.ThisTurn] = 0 // two players went in the same spot
+							}
+						}
+					}
+					board, err := game.getBoard()
+					if err != nil {
+						log.Printf("Error getting board: %#v", err)
+						return
+					}
+					for i, v := range board {
+						if v == 0 {
+							board[i] = thisRound[i]
+						}
+					}
+
+					game.setBoard(board)
+					count, err := db.Update(game)
+					if err != nil || count == 0 {
+						log.Printf("Unable to save game after move: %v", err)
+						return
+					}
+					for i, p := range Games[gameId].Players {
+						if p.Role == Host {
+							continue
+						}
+						Games[gameId].Players[i].ThisTurn = -1
+						Games[gameId].Players[i].comm <- map[string]interface{}{
+							"type":  "update",
+							"board": board,
+							"state": "start",
+						}
+					}
+					player.conn.WriteJSON(map[string]interface{}{
+						"type":  "update",
+						"board": board,
+						"state": "start",
+					})
 				default:
 					log.Printf("Unknown message from player: %#v", msg)
 				}
@@ -225,16 +297,26 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 		}
 	} else {
 		log.Printf("Player is connected: %#v", player)
+		board, _ := game.getBoard()
+		// There may not be a board yet so just try and send it
 		player.conn.WriteJSON(map[string]interface{}{
-			"type":  "state",
+			"type":  "update",
 			"state": game.State,
+			"board": board,
 		})
 		// Tell the host we've joined
 		Games[gameId].Comm <- map[string]interface{}{"type": "join"}
+		player.ThisTurn = -1
+		log.Printf("Player %v waiting for messages", player.Id)
 		for {
 			select {
 			case msg := <-wsReadChan: // player website action
 				switch {
+				case msg["type"] == "move":
+					// the player move comes as an integer from [0-8] representing the location of the move
+					// TODO: assert this is the case before saving
+					player.ThisTurn = int(msg["move"].(float64))
+					Games[gameId].Comm <- msg
 				default:
 					log.Printf("Unknown web message from player: %#v", msg)
 				}
@@ -242,7 +324,6 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 				// it may be safe to just take any message from the host and just send it
 				log.Printf("Sending %v to player %v", msg["type"], player.Id)
 				player.conn.WriteJSON(msg)
-
 			}
 		}
 	}

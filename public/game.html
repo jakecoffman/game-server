@@ -47,11 +47,37 @@
 </div>
 <div class="container" ng-show="state=='start' && isHost == true">
 	<div class="row">
-		Host start
+		<div class="row">
+		<div class="col-xs-4"><button class="btn btn-primary form-control">Player {{board[0]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control">Player {{board[1]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control">Player {{board[2]}}</button></div>
+	</div>
+	<div class="row">
+		<div class="col-xs-4"><button class="btn btn-primary form-control">Player {{board[3]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control">Player {{board[4]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control">Player {{board[5]}}</button></div>
+	</div>
+	<div class="row">
+		<div class="col-xs-4"><button class="btn btn-primary form-control">Player {{board[6]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control">Player {{board[7]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control">Player {{board[8]}}</button></div>
+	</div>
 	</div>
 </div>
 <div class="container" ng-show="state=='start' && isHost == false">
 	<div class="row">
-		Player start
+		<div class="col-xs-4"><button class="btn btn-primary form-control" ng-click="move(0)">Player {{board[0]}}</button>		</div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control" ng-click="move(1)">Player {{board[1]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control" ng-click="move(2)">Player {{board[2]}}</button></div>
+	</div>
+	<div class="row">
+		<div class="col-xs-4"><button class="btn btn-primary form-control" ng-click="move(3)">Player {{board[3]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control" ng-click="move(4)">Player {{board[4]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control" ng-click="move(5)">Player {{board[5]}}</button></div>
+	</div>
+	<div class="row">
+		<div class="col-xs-4"><button class="btn btn-primary form-control" ng-click="move(6)">Player {{board[6]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control" ng-click="move(7)">Player {{board[7]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control" ng-click="move(8)">Player {{board[8]}}</button></div>
 	</div>
 </div>
