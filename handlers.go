@@ -12,7 +12,7 @@ import (
 	"github.com/nu7hatch/gouuid"
 )
 
-func NewGame(r render.Render, db *gorp.DbMap, session sessions.Session, log *log.Logger) {
+func NewGame(r render.Render, db *gorp.DbMap, session sessions.Session, gameService GameService, log *log.Logger) {
 	session.Clear()
 
 	u, err := uuid.NewV4()
@@ -47,10 +47,10 @@ func NewGame(r render.Render, db *gorp.DbMap, session sessions.Session, log *log
 		return
 	}
 
-	Games[game.Id] = &GameRelation{
+	gameService.Set(game.Id, &GameRelation{
 		Players: []*Player{},
 		Comm:    make(chan map[string]interface{}),
-	}
+	})
 
 	r.JSON(200, map[string]string{"uuid": u.String()})
 }
@@ -103,7 +103,7 @@ func GetGame(r render.Render, params martini.Params, db *gorp.DbMap, session ses
 	}
 }
 
-func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params martini.Params, db *gorp.DbMap, session sessions.Session, log *log.Logger) {
+func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params martini.Params, db *gorp.DbMap, session sessions.Session, gameService GameService, log *log.Logger) {
 	conn, err := websocket.Upgrade(w, req, nil, 1024, 1024)
 	if _, ok := err.(websocket.HandshakeError); ok {
 		http.Error(w, "Not a websocket handshake", 400)
@@ -128,13 +128,15 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 
 	// TODO: Thread safety
 	// Check if game exists
-	if _, ok := Games[gameId]; !ok {
+	gameRelation, ok := gameService.Get(gameId)
+	if !ok {
 		log.Printf("No such game")
 		return
 	}
 	// Add them to the game in progress
-	Games[gameId].Players = append(Games[gameId].Players, player)
-	defer playerDisconnect(Games, gameId, *player)
+	gameRelation.Players = append(gameRelation.Players, player)
+	defer playerDisconnect(gameRelation, gameId, *player)
+	gameService.Set(gameId, gameRelation)
 
 	// get the game from the db to load the state, other info
 	g, err := db.Get(Game{}, gameId)
@@ -161,8 +163,8 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 			err := conn.ReadJSON(&msg)
 			if err != nil {
 				log.Printf("Error message from websocket: %#v", err)
-				playerDisconnect(Games, gameId, *player)
-				Games[gameId].Comm <- map[string]interface{}{"type": "leave"}
+				playerDisconnect(gameRelation, gameId, *player)
+				gameRelation.Comm <- map[string]interface{}{"type": "leave"}
 				return
 			}
 			log.Printf("Got message: %v", msg)
@@ -174,7 +176,7 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 		log.Printf("Host is connected: %#v", player)
 		player.conn.WriteJSON(map[string]interface{}{
 			"type":    "players",
-			"players": Games[gameId].Players,
+			"players": gameRelation.Players,
 		})
 		player.conn.WriteJSON(map[string]interface{}{
 			"type":  "state",
@@ -205,12 +207,12 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 					if err != nil {
 						log.Printf("Error getting board: %#v", board)
 					}
-					for i, p := range Games[gameId].Players {
+					for i, p := range gameRelation.Players {
 						if p.Role == Host { // this will hang everything
 							continue
 						}
 						log.Printf("Trying to sent to player %#v", p.Id)
-						Games[gameId].Players[i].comm <- map[string]interface{}{
+						gameRelation.Players[i].comm <- map[string]interface{}{
 							"type":  "update",
 							"board": board,
 							"state": "start",
@@ -225,7 +227,7 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 				default:
 					log.Printf("Unknown web message from host: %#v", msg)
 				}
-			case msg := <-Games[gameId].Comm: // server side message from player to host
+			case msg := <-gameRelation.Comm: // server side message from player to host
 				switch {
 				case msg["type"] == "join":
 					fallthrough
@@ -234,11 +236,11 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 					// send a fresh list of players to the UI
 					player.conn.WriteJSON(map[string]interface{}{
 						"type":    "players",
-						"players": Games[gameId].Players,
+						"players": gameRelation.Players,
 					})
 				case msg["type"] == "move":
 					resolveRound := true
-					for _, p := range Games[gameId].Players {
+					for _, p := range gameRelation.Players {
 						if p.Role != Host && p.ThisTurn == -1 {
 							resolveRound = false
 						}
@@ -248,7 +250,7 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 					}
 					// all players have set their moves, update the board and send it out
 					thisRound := []int{0, 0, 0, 0, 0, 0, 0, 0, 0}
-					for _, p := range Games[gameId].Players {
+					for _, p := range gameRelation.Players {
 						if p.Role != Host {
 							if thisRound[p.ThisTurn] == 0 {
 								thisRound[p.ThisTurn] = p.Id
@@ -274,12 +276,12 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 						log.Printf("Unable to save game after move: %v", err)
 						return
 					}
-					for i, p := range Games[gameId].Players {
+					for i, p := range gameRelation.Players {
 						if p.Role == Host {
 							continue
 						}
-						Games[gameId].Players[i].ThisTurn = -1
-						Games[gameId].Players[i].comm <- map[string]interface{}{
+						gameRelation.Players[i].ThisTurn = -1
+						gameRelation.Players[i].comm <- map[string]interface{}{
 							"type":  "update",
 							"board": board,
 							"state": "start",
@@ -305,7 +307,7 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 			"board": board,
 		})
 		// Tell the host we've joined
-		Games[gameId].Comm <- map[string]interface{}{"type": "join"}
+		gameRelation.Comm <- map[string]interface{}{"type": "join"}
 		player.ThisTurn = -1
 		log.Printf("Player %v waiting for messages", player.Id)
 		for {
@@ -316,7 +318,7 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 					// the player move comes as an integer from [0-8] representing the location of the move
 					// TODO: assert this is the case before saving
 					player.ThisTurn = int(msg["move"].(float64))
-					Games[gameId].Comm <- msg
+					gameRelation.Comm <- msg
 				default:
 					log.Printf("Unknown web message from player: %#v", msg)
 				}
@@ -329,11 +331,11 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 	}
 }
 
-func playerDisconnect(Games map[string]*GameRelation, gameId string, player Player) {
+func playerDisconnect(game *GameRelation, gameId string, player Player) {
 	// Since Games represents CONNECTED players, we need to delete them when they dc
-	for i := range Games[gameId].Players {
-		if player.Id == Games[gameId].Players[i].Id {
-			Games[gameId].Players = append(Games[gameId].Players[:i], Games[gameId].Players[i+1:]...)
+	for i := range game.Players {
+		if player.Id == game.Players[i].Id {
+			game.Players = append(game.Players[:i], game.Players[i+1:]...)
 			return
 		}
 	}

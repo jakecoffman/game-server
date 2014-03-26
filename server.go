@@ -11,13 +11,11 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-var Games map[string]*GameRelation
-
 func main() {
 	// so we can save these to the session, save database queries
 	gob.Register(&Player{})
 
-	Games = map[string]*GameRelation{}
+	gameService := GameService{GameMap: map[string]*GameRelation{}}
 
 	m := martini.Classic()
 
@@ -31,6 +29,7 @@ func main() {
 	m.Get("/ws/:id", wsHandler)
 
 	m.Map(initDb("dev.db"))
+	m.Map(gameService)
 
 	m.Run()
 }

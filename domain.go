@@ -65,3 +65,17 @@ func (g *Game) setBoard(v []int) error {
 	g.Board = string(b)
 	return nil
 }
+
+// TODO: Locking, interface this
+type GameService struct {
+	GameMap map[string]*GameRelation
+}
+
+func (games *GameService) Set(key string, value *GameRelation) {
+	games.GameMap[key] = value
+}
+
+func (games *GameService) Get(key string) (*GameRelation, bool) {
+	v, b := games.GameMap[key]
+	return v, b
+}

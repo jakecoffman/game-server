@@ -48,7 +48,7 @@ app.controller('GameCtl', function($scope, $http, $routeParams, $http){
 	};
 	$scope.move = function(space) {
 		$scope.send({type: "move", move: space});
-	}
+	};
 
 	$scope.connectWs = function(){
 		var conn = new WebSocket("ws://localhost:3000/ws/" + $scope.id);
