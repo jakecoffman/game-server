@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 
+	"github.com/coopernurse/gorp"
 	"github.com/gorilla/websocket"
 	"github.com/nu7hatch/gouuid"
 )
@@ -41,16 +42,6 @@ type Game struct {
 	hostChan chan Message `json:"-" db:"-"`
 }
 
-func NewGame() (*Game, error) {
-	u, err := uuid.NewV4()
-	if err != nil {
-		return nil, err
-	}
-
-	game := &Game{Id: u.String(), State: "lobby"}
-	return game, nil
-}
-
 func (g Game) getBoard() ([]int, error) {
 	d := []int{}
 	err := json.Unmarshal([]byte(g.Board), &d)
@@ -70,5 +61,30 @@ func (g *Game) setBoard(v []int) error {
 }
 
 // Not saved to database
+
+// TODO: make this an interface. for now since we are all in the same namespace this is easier
+type GameService struct {
+}
+
+func (gs *GameService) NewGame(db *gorp.DbMap) (*Game, *Player, error) {
+	u, err := uuid.NewV4()
+	if err != nil {
+		return nil, nil, err
+	}
+	game := &Game{Id: u.String(), State: "lobby"}
+
+	err = db.Insert(game)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	player := NewPlayer(game.Id, Host)
+	err = db.Insert(player)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return game, player, nil
+}
 
 type Message map[string]interface{}

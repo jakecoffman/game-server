@@ -12,31 +12,16 @@ import (
 )
 
 // Creates a new game and player (the host)
-func NewGameHandler(r render.Render, db *gorp.DbMap, session sessions.Session, log *log.Logger) {
-	game, err := NewGame()
+func NewGameHandler(r render.Render, db *gorp.DbMap, session sessions.Session, gameService *GameService, log *log.Logger) {
+	game, player, err := gameService.NewGame(db)
 	if err != nil {
-		log.Printf("New game failed: %#v\n", err)
-		r.JSON(500, Message{"message": "Failed to create a new game"})
-		return
-	}
-
-	err = db.Insert(game)
-	if err != nil {
-		log.Printf("Insert fail: %#v", err)
+		log.Printf("Failed to create game: %v", err)
 		r.JSON(500, Message{"message": "Failed to create game"})
 		return
 	}
-	log.Println("New game started, UUID is " + game.Id)
+	log.Printf("New game started, UUID %v and host Id %v", game.Id, player.Id)
 
 	// TODO: require logins for hosts
-
-	player := NewPlayer(game.Id, Host)
-	err = db.Insert(player)
-	if err != nil {
-		log.Printf("New player could not be inserted: %#v", err)
-		r.JSON(500, Message{"message": "Failed to create player"})
-		return
-	}
 
 	session.Set("player_id", player.Id)
 

@@ -32,6 +32,7 @@ func main() {
 	m.Get("/ws/:id", WebsocketHandler)
 
 	m.Map(initDb("dev.db"))
+	m.Map(&GameService{})
 
 	m.Run()
 }

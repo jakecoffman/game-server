@@ -10,6 +10,7 @@ import (
 
 var renderer = &MockRenderer{}
 var session = &MockSession{}
+var gameService = &GameService{}
 
 func setUp() *gorp.DbMap {
 	db := initDb("test.db")
@@ -25,7 +26,7 @@ func Test_NewGameHandler(t *testing.T) {
 	db := setUp()
 
 	log := log.New(os.Stderr, "TEST: ", log.Flags())
-	NewGameHandler(renderer, db, session, log)
+	NewGameHandler(renderer, db, session, gameService, log)
 
 	objs, err := db.Select(Game{}, "select * from games")
 	if objs == nil || err != nil || len(objs) != 1 {
