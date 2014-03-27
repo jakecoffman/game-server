@@ -11,8 +11,8 @@ import (
 )
 
 type Channels struct {
-	players map[int]chan map[string]interface{}
-	host    chan map[string]interface{}
+	players map[int]chan Message
+	host    chan Message
 }
 
 var ChannelMap map[string]*Channels

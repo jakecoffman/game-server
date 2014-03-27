@@ -19,12 +19,12 @@ const (
 // These top structures are saved to the database
 
 type Player struct {
-	Id       int                         `json:"id"`     // maintain map of session ids to player ids so players may rejoin when dropped
-	Game     string                      `json:"string"` // current game we are in (foreign key)
-	Role     Role                        `json:"role"`
-	conn     *websocket.Conn             `db:"-" json:"-"` // unexported so gob doesn't try to seriealize it
-	comm     chan map[string]interface{} `db:"-" json:"-"`
-	ThisTurn int                         `db:"this_turn"`
+	Id       int             `json:"id"`     // maintain map of session ids to player ids so players may rejoin when dropped
+	Game     string          `json:"string"` // current game we are in (foreign key)
+	Role     Role            `json:"role"`
+	conn     *websocket.Conn `db:"-" json:"-"` // unexported so gob doesn't try to seriealize it
+	comm     chan Message    `db:"-" json:"-"`
+	ThisTurn int             `db:"this_turn"`
 }
 
 func NewPlayer(gameId string, role Role) *Player {
@@ -35,10 +35,10 @@ func NewPlayer(gameId string, role Role) *Player {
 }
 
 type Game struct {
-	Id       string                      `json:"id"` // UUID
-	State    string                      `json:"state"`
-	Board    string                      `json:"board"` // JSON string of board (so it can be persisted in the DB)
-	hostChan chan map[string]interface{} `json:"-" db:"-"`
+	Id       string       `json:"id"` // UUID
+	State    string       `json:"state"`
+	Board    string       `json:"board"` // JSON string of board (so it can be persisted in the DB)
+	hostChan chan Message `json:"-" db:"-"`
 }
 
 func NewGame() (*Game, error) {
@@ -68,3 +68,7 @@ func (g *Game) setBoard(v []int) error {
 	g.Board = string(b)
 	return nil
 }
+
+// Not saved to database
+
+type Message map[string]interface{}

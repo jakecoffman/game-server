@@ -45,7 +45,7 @@ func Test_NewGameHandler(t *testing.T) {
 		t.Errorf("Player ID not saved in session")
 		return
 	}
-	response := renderer.data.(map[string]interface{})
+	response := renderer.data.(Message)
 	if renderer.status != 200 || response["uuid"] != game.Id {
 		t.Errorf("Failed renderer: %#v", renderer)
 		return
