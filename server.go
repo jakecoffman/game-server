@@ -27,9 +27,9 @@ func main() {
 	m.Use(sessions.Sessions("games", store))
 	m.Use(render.Renderer())
 
-	m.Post("/game", NewGame)
-	m.Get("/game/:id", GetGame)
-	m.Get("/ws/:id", wsHandler)
+	m.Post("/game", NewGameHandler)
+	m.Get("/game/:id", GetGameHandler)
+	m.Get("/ws/:id", WebsocketHandler)
 
 	m.Map(initDb("dev.db"))
 

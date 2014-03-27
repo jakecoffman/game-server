@@ -9,49 +9,43 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/martini-contrib/render"
 	"github.com/martini-contrib/sessions"
-	"github.com/nu7hatch/gouuid"
 )
 
-func NewGame(r render.Render, db *gorp.DbMap, session sessions.Session, log *log.Logger) {
-	// Generate unique game ID
-	u, err := uuid.NewV4()
+// Creates a new game and player (the host)
+func NewGameHandler(r render.Render, db *gorp.DbMap, session sessions.Session, log *log.Logger) {
+	game, err := NewGame()
 	if err != nil {
-		log.Printf("UUID fail: %#v\n", err)
-		r.JSON(500, map[string]string{"message": "can't generate UUID for some reason"})
+		log.Printf("New game failed: %#v\n", err)
+		r.JSON(500, map[string]string{"message": "Failed to create a new game"})
 		return
 	}
 
-	// Create game and insert it in the DB for persistance
-	game := &Game{Id: u.String(), State: "lobby"}
 	err = db.Insert(game)
 	if err != nil {
 		log.Printf("Insert fail: %#v", err)
 		r.JSON(500, map[string]string{"message": "Failed to create game"})
 		return
 	}
-	log.Println("New game started, UUID is " + u.String())
+	log.Println("New game started, UUID is " + game.Id)
 
 	// TODO: require logins for hosts
 
-	// Create a new player, insert it into the DB for persistance and the session for convenience
-	player := &Player{
-		Game: game.Id,
-		Role: Host,
-	}
+	player := NewPlayer(game.Id, Host)
 	err = db.Insert(player)
 	if err != nil {
-		log.Printf("New player could not be inserted")
+		log.Printf("New player could not be inserted: %#v", err)
+		r.JSON(500, map[string]string{"message": "Failed to create player"})
 		return
 	}
 
 	session.Set("player_id", player.Id)
 
-	r.JSON(200, map[string]string{"uuid": u.String()})
+	r.JSON(200, map[string]interface{}{"uuid": game.Id})
 }
 
 // this resource is hit first before a player can connect with websockets, partially due to the session not being able to be set
 // on the websocket handler
-func GetGame(r render.Render, params martini.Params, db *gorp.DbMap, session sessions.Session, log *log.Logger) {
+func GetGameHandler(r render.Render, params martini.Params, db *gorp.DbMap, session sessions.Session, log *log.Logger) {
 	// get the game from the DB
 	gameId := params["id"]
 	obj, err := db.Get(Game{}, gameId)
@@ -116,7 +110,7 @@ func GetGame(r render.Render, params martini.Params, db *gorp.DbMap, session ses
 }
 
 // handles the websocket connections for the game
-func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params martini.Params, db *gorp.DbMap, session sessions.Session, log *log.Logger) {
+func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request, params martini.Params, db *gorp.DbMap, session sessions.Session, log *log.Logger) {
 	conn, err := websocket.Upgrade(w, req, nil, 1024, 1024)
 	if _, ok := err.(websocket.HandshakeError); ok {
 		http.Error(w, "Not a websocket handshake", 400)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/gorilla/websocket"
+	"github.com/nu7hatch/gouuid"
 )
 
 type Role int
@@ -26,11 +27,28 @@ type Player struct {
 	ThisTurn int                         `db:"this_turn"`
 }
 
+func NewPlayer(gameId string, role Role) *Player {
+	return &Player{
+		Game: gameId,
+		Role: role,
+	}
+}
+
 type Game struct {
 	Id       string                      `json:"id"` // UUID
 	State    string                      `json:"state"`
 	Board    string                      `json:"board"` // JSON string of board (so it can be persisted in the DB)
 	hostChan chan map[string]interface{} `json:"-" db:"-"`
+}
+
+func NewGame() (*Game, error) {
+	u, err := uuid.NewV4()
+	if err != nil {
+		return nil, err
+	}
+
+	game := &Game{Id: u.String(), State: "lobby"}
+	return game, nil
 }
 
 func (g Game) getBoard() ([]int, error) {

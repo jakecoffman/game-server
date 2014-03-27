@@ -4,6 +4,7 @@ import (
 	"html/template"
 
 	"github.com/martini-contrib/render"
+	"github.com/martini-contrib/sessions"
 )
 
 type MockRenderer struct {
@@ -26,4 +27,37 @@ func (m *MockRenderer) Redirect(location string, status ...int) {
 }
 func (m *MockRenderer) Template() *template.Template {
 	return nil
+}
+
+type MockSession struct {
+	data map[interface{}]interface{}
+}
+
+func (m *MockSession) Get(key interface{}) interface{} {
+	v, _ := m.data[key]
+	return v
+}
+
+func (m *MockSession) Set(key interface{}, val interface{}) {
+	m.data[key] = val
+}
+
+func (m *MockSession) Delete(key interface{}) {
+	delete(m.data, key)
+}
+
+func (m *MockSession) Clear() {
+	m.data = map[interface{}]interface{}{}
+}
+
+func (m *MockSession) AddFlash(value interface{}, vars ...string) {
+
+}
+
+func (m *MockSession) Flashes(vars ...string) []interface{} {
+	return nil
+}
+
+func (m *MockSession) Options(sessions.Options) {
+
 }
