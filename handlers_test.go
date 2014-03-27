@@ -5,25 +5,23 @@ import (
 	"os"
 	"testing"
 
+	"github.com/codegangsta/martini"
 	"github.com/coopernurse/gorp"
 )
 
 var renderer = &MockRenderer{}
 var session = &MockSession{}
+var db = &gorp.DbMap{} // DB should not be used in these handler tests
 
-func setUp() *gorp.DbMap {
-	db := initDb("test.db")
-	db.DropTables()
-	db = initDb("test.db")
-
+func setUp() {
 	session.Clear()
 
-	return db
+	// TODO: Move the ChannelsMap into GameServices
+	ChannelMap = map[string]*Channels{}
 }
 
 func Test_NewGameHandler(t *testing.T) {
-	db := setUp()
-
+	setUp()
 	log := log.New(os.Stderr, "TEST: ", log.Flags())
 	gameService := &MockGameService{
 		Game:   &Game{Id: "Hello"},
@@ -39,6 +37,56 @@ func Test_NewGameHandler(t *testing.T) {
 
 	if 1 != session.Get("player_id") {
 		t.Errorf("Player ID not saved in session")
+		return
+	}
+}
+
+func Test_GetGameHandler_Host(t *testing.T) {
+	setUp()
+	log := log.New(os.Stderr, "TEST: ", log.Flags())
+	gameService := &MockGameService{
+		Game:   &Game{Id: "Hello"},
+		Player: &Player{Id: 1, Role: Host},
+	}
+	params := martini.Params{"id": "asdf"}
+	session.Set("player_id", 1)
+	GetGameHandler(renderer, params, db, gameService, session, log)
+	response := renderer.data.(Message)
+	if renderer.status != 200 || response["type"] != "host" || response["host"] != true {
+		t.Errorf("Failed to get proper response: %#v", response)
+		return
+	}
+	if session.Get("player_id") != 1 {
+		t.Errorf("Didn't put player ID in session", session.Get("player_id"))
+		return
+	}
+	_, ok := ChannelMap["Hello"]
+	if !ok {
+		t.Errorf("Didn't create channel map")
+		return
+	}
+}
+
+func Test_GetGameHandler_Player(t *testing.T) {
+	log := log.New(os.Stderr, "TEST: ", log.Flags())
+	gameService := &MockGameService{
+		Game:   &Game{Id: "Hello"},
+		Player: &Player{Id: 7},
+	}
+	params := martini.Params{"id": "asdf"}
+	GetGameHandler(renderer, params, db, gameService, session, log)
+	response := renderer.data.(Message)
+	if renderer.status != 200 || response["type"] != "host" || response["host"] != false {
+		t.Errorf("Failed to get proper response: %#v", response)
+		return
+	}
+	if session.Get("player_id") != 7 {
+		t.Errorf("Didn't put player ID in session", session.Get("player_id"))
+		return
+	}
+	_, ok := ChannelMap["Hello"]
+	if !ok {
+		t.Errorf("Didn't create channel map")
 		return
 	}
 }
