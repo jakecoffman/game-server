@@ -12,7 +12,7 @@ import (
 )
 
 // Creates a new game and player (the host)
-func NewGameHandler(r render.Render, db *gorp.DbMap, session sessions.Session, gameService *GameService, log *log.Logger) {
+func NewGameHandler(r render.Render, db *gorp.DbMap, session sessions.Session, gameService GameService, log *log.Logger) {
 	game, player, err := gameService.NewGame(db)
 	if err != nil {
 		log.Printf("Failed to create game: %v", err)
@@ -30,56 +30,19 @@ func NewGameHandler(r render.Render, db *gorp.DbMap, session sessions.Session, g
 
 // this resource is hit first before a player can connect with websockets, partially due to the session not being able to be set
 // on the websocket handler
-func GetGameHandler(r render.Render, params martini.Params, db *gorp.DbMap, session sessions.Session, log *log.Logger) {
+func GetGameHandler(r render.Render, params martini.Params, db *gorp.DbMap, gameService GameService, session sessions.Session, log *log.Logger) {
 	// get the game from the DB
 	gameId := params["id"]
-	obj, err := db.Get(Game{}, gameId)
+	// and the player from the session
+	obj := session.Get("player_id")
+
+	game, player, err := gameService.ConnectToGame(db, gameId, obj)
 	if err != nil {
-		log.Printf("Error querying DB: %#v", err)
+		log.Printf("Failed to connect to game: %v", err)
+		r.JSON(500, Message{"message": "Failed to connect to game"})
 		return
 	}
-	if obj == nil {
-		log.Printf("No such game: %#v", gameId)
-		return
-	}
-	game := obj.(*Game)
 
-	// is the player is rejoining?
-	obj = session.Get("player_id")
-	var player *Player
-	if obj == nil { // no, it's a new player
-		player = &Player{
-			Game:     game.Id,
-			ThisTurn: -1,
-		}
-
-		// save to db so we can find them if they disconnect
-		err = db.Insert(player)
-		if err != nil {
-			log.Printf("New player could not be inserted")
-			return
-		}
-	} else { // player is rejoining
-		obj, err := db.Get(Player{}, obj)
-		if err != nil {
-			log.Printf("Failed to get player from DB")
-			return
-		}
-		player = obj.(*Player)
-		// TODO: this would screw with any games they are currently already in?
-		if player.Game != game.Id {
-			player.Game = game.Id
-			player.ThisTurn = -1
-			count, err := db.Update(player)
-			if count == 0 || err != nil {
-				log.Printf("Failed to update rejoining player: %#v", player)
-				return
-			}
-			log.Printf("Joining player id is: %#v", player.Id)
-		} else {
-			log.Printf("Returning player id is: %#v", player.Id)
-		}
-	}
 	// save to the session so the websocket handler so we recognize them when they join a game
 	session.Set("player_id", player.Id)
 

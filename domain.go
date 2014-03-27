@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"log"
 
 	"github.com/coopernurse/gorp"
 	"github.com/gorilla/websocket"
@@ -63,10 +65,15 @@ func (g *Game) setBoard(v []int) error {
 // Not saved to database
 
 // TODO: make this an interface. for now since we are all in the same namespace this is easier
-type GameService struct {
+type GameService interface {
+	NewGame(db *gorp.DbMap) (*Game, *Player, error)
+	ConnectToGame(db *gorp.DbMap, gameId string, playerObj interface{}) (*Game, *Player, error)
 }
 
-func (gs *GameService) NewGame(db *gorp.DbMap) (*Game, *Player, error) {
+// TODO: this all needs to be in a different package
+type GameServiceImpl struct{}
+
+func (gs *GameServiceImpl) NewGame(db *gorp.DbMap) (*Game, *Player, error) {
 	u, err := uuid.NewV4()
 	if err != nil {
 		return nil, nil, err
@@ -82,6 +89,54 @@ func (gs *GameService) NewGame(db *gorp.DbMap) (*Game, *Player, error) {
 	err = db.Insert(player)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	return game, player, nil
+}
+
+func (gs *GameServiceImpl) ConnectToGame(db *gorp.DbMap, gameId string, playerObj interface{}) (*Game, *Player, error) {
+	obj, err := db.Get(Game{}, gameId)
+	if err != nil {
+		return nil, nil, err
+	}
+	if obj == nil {
+		return nil, nil, errors.New("Player not saved to session")
+	}
+	game := obj.(*Game)
+
+	var player *Player
+	if playerObj == nil { // no, it's a new player
+		player = &Player{
+			Game:     game.Id,
+			ThisTurn: -1,
+		}
+
+		// save to db so we can find them if they disconnect
+		err = db.Insert(player)
+		if err != nil {
+			return nil, nil, err
+		}
+	} else { // player is rejoining
+		playerObj, err := db.Get(Player{}, playerObj)
+		if err != nil {
+			return nil, nil, err
+		}
+		player = playerObj.(*Player)
+		// TODO: this would screw with any games they are currently already in?
+		if player.Game != game.Id {
+			player.Game = game.Id
+			player.ThisTurn = -1
+			count, err := db.Update(player)
+			if count == 0 {
+				return nil, nil, errors.New("Player update effected 0 rows")
+			}
+			if err != nil {
+				return nil, nil, err
+			}
+			log.Printf("Joining player id is: %#v", player.Id)
+		} else {
+			log.Printf("Returning player id is: %#v", player.Id)
+		}
 	}
 
 	return game, player, nil
