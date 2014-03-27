@@ -15,11 +15,7 @@ type Channels struct {
 	host    chan Message
 }
 
-var ChannelMap map[string]*Channels
-
 func main() {
-	ChannelMap = map[string]*Channels{}
-
 	m := martini.Classic()
 
 	store := sessions.NewCookieStore([]byte("secret123"))
@@ -32,7 +28,7 @@ func main() {
 	m.Get("/ws/:id", WebsocketHandler)
 
 	m.Map(initDb("dev.db"))
-	m.MapTo(&GameServiceImpl{}, (*GameService)(nil))
+	m.MapTo(&GameServiceImpl{Channels: map[string]*Channels{}}, (*GameService)(nil))
 
 	m.Run()
 }

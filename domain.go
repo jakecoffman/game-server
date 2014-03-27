@@ -71,7 +71,18 @@ type GameService interface {
 }
 
 // TODO: this all needs to be in a different package
-type GameServiceImpl struct{}
+type GameServiceImpl struct {
+	ChannelMap map[string]*Channels
+}
+
+func (gs *GameServiceImpl) GetChannels(gameId string) (*Channels, error) {
+	c, err := gs.ChannelMap[gameId]
+	return c, err
+}
+
+func (gs *GameServiceImpl) SetChannels(gameId string, channels *Channels) {
+	gs.ChannelMap[gameId] = channels
+}
 
 func (gs *GameServiceImpl) NewGame(db *gorp.DbMap) (*Game, *Player, error) {
 	u, err := uuid.NewV4()
