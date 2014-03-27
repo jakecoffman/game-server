@@ -2,7 +2,6 @@ package main
 
 import (
 	"database/sql"
-	"encoding/gob"
 
 	"github.com/codegangsta/martini"
 	"github.com/coopernurse/gorp"
@@ -11,17 +10,21 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func main() {
-	// so we can save these to the session, save database queries
-	gob.Register(&Player{})
+type Channels struct {
+	players map[int]chan map[string]interface{}
+	host    chan map[string]interface{}
+}
 
-	gameService := GameService{GameMap: map[string]*GameRelation{}}
+var ChannelMap map[string]*Channels
+
+func main() {
+	ChannelMap = map[string]*Channels{}
 
 	m := martini.Classic()
 
 	store := sessions.NewCookieStore([]byte("secret123"))
 	// store.Options(sessions.Options{HttpOnly: false})
-	m.Use(sessions.Sessions("mafia", store))
+	m.Use(sessions.Sessions("games", store))
 	m.Use(render.Renderer())
 
 	m.Post("/game", NewGame)
@@ -29,7 +32,6 @@ func main() {
 	m.Get("/ws/:id", wsHandler)
 
 	m.Map(initDb("dev.db"))
-	m.Map(gameService)
 
 	m.Run()
 }

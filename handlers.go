@@ -12,15 +12,16 @@ import (
 	"github.com/nu7hatch/gouuid"
 )
 
-func NewGame(r render.Render, db *gorp.DbMap, session sessions.Session, gameService GameService, log *log.Logger) {
-	session.Clear()
-
+func NewGame(r render.Render, db *gorp.DbMap, session sessions.Session, log *log.Logger) {
+	// Generate unique game ID
 	u, err := uuid.NewV4()
 	if err != nil {
 		log.Printf("UUID fail: %#v\n", err)
 		r.JSON(500, map[string]string{"message": "can't generate UUID for some reason"})
 		return
 	}
+
+	// Create game and insert it in the DB for persistance
 	game := &Game{Id: u.String(), State: "lobby"}
 	err = db.Insert(game)
 	if err != nil {
@@ -30,7 +31,9 @@ func NewGame(r render.Render, db *gorp.DbMap, session sessions.Session, gameServ
 	}
 	log.Println("New game started, UUID is " + u.String())
 
-	// TODO: Require logins to create a new game, for now every new game gives you new player
+	// TODO: require logins for hosts
+
+	// Create a new player, insert it into the DB for persistance and the session for convenience
 	player := &Player{
 		Game: game.Id,
 		Role: Host,
@@ -41,21 +44,15 @@ func NewGame(r render.Render, db *gorp.DbMap, session sessions.Session, gameServ
 		return
 	}
 
-	session.Set("player", player)
-	if session.Get("player") != player {
-		log.Printf("WAT")
-		return
-	}
-
-	gameService.Set(game.Id, &GameRelation{
-		Players: []*Player{},
-		Comm:    make(chan map[string]interface{}),
-	})
+	session.Set("player_id", player.Id)
 
 	r.JSON(200, map[string]string{"uuid": u.String()})
 }
 
+// this resource is hit first before a player can connect with websockets, partially due to the session not being able to be set
+// on the websocket handler
 func GetGame(r render.Render, params martini.Params, db *gorp.DbMap, session sessions.Session, log *log.Logger) {
+	// get the game from the DB
 	gameId := params["id"]
 	obj, err := db.Get(Game{}, gameId)
 	if err != nil {
@@ -68,11 +65,10 @@ func GetGame(r render.Render, params martini.Params, db *gorp.DbMap, session ses
 	}
 	game := obj.(*Game)
 
-	// see if player is rejoining
-	sPlayer := session.Get("player")
+	// is the player is rejoining?
+	obj = session.Get("player_id")
 	var player *Player
-	if sPlayer == nil {
-		// no, it's a new player
+	if obj == nil { // no, it's a new player
 		player = &Player{
 			Game:     game.Id,
 			ThisTurn: -1,
@@ -84,16 +80,32 @@ func GetGame(r render.Render, params martini.Params, db *gorp.DbMap, session ses
 			log.Printf("New player could not be inserted")
 			return
 		}
-	} else {
-		player = sPlayer.(*Player)
-		// TODO: this would screw with any games they are currently already in
-		player.Game = game.Id
-		log.Printf("Returning player id is: %#v", player.Id)
+	} else { // player is rejoining
+		obj, err := db.Get(Player{}, obj)
+		if err != nil {
+			log.Printf("Failed to get player from DB")
+			return
+		}
+		player = obj.(*Player)
+		// TODO: this would screw with any games they are currently already in?
+		if player.Game != game.Id {
+			player.Game = game.Id
+			player.ThisTurn = -1
+			count, err := db.Update(player)
+			if count == 0 || err != nil {
+				log.Printf("Failed to update rejoining player: %#v", player)
+				return
+			}
+			log.Printf("Joining player id is: %#v", player.Id)
+		} else {
+			log.Printf("Returning player id is: %#v", player.Id)
+		}
 	}
-	session.Set("player", player)
+	// save to the session so the websocket handler so we recognize them when they join a game
+	session.Set("player_id", player.Id)
 
-	// write something to the connection to get this to save?
-	log.Printf("Setting player's id to %#v", player.Id)
+	// Create a Channel object so players and host can join
+	ChannelMap[game.Id] = &Channels{players: map[int]chan map[string]interface{}{}}
 
 	// inform the UI of who this is
 	if player.Role == Host {
@@ -103,7 +115,8 @@ func GetGame(r render.Render, params martini.Params, db *gorp.DbMap, session ses
 	}
 }
 
-func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params martini.Params, db *gorp.DbMap, session sessions.Session, gameService GameService, log *log.Logger) {
+// handles the websocket connections for the game
+func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params martini.Params, db *gorp.DbMap, session sessions.Session, log *log.Logger) {
 	conn, err := websocket.Upgrade(w, req, nil, 1024, 1024)
 	if _, ok := err.(websocket.HandshakeError); ok {
 		http.Error(w, "Not a websocket handshake", 400)
@@ -115,28 +128,22 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 	defer conn.Close()
 	log.Println("Succesfully upgraded connection")
 
-	// get things ready
+	// get the player
 	gameId := params["id"]
-	p := session.Get("player")
+	p := session.Get("player_id")
 	if p == nil {
 		log.Println("Player not found in session")
 		return
 	}
-	player := p.(*Player)
-	player.conn = conn
-	player.comm = make(chan map[string]interface{})
-
-	// TODO: Thread safety
-	// Check if game exists
-	gameRelation, ok := gameService.Get(gameId)
-	if !ok {
-		log.Printf("No such game")
+	obj, err := db.Get(Player{}, p)
+	if err != nil {
+		log.Printf("Could not find player with id %v in database", p)
 		return
 	}
-	// Add them to the game in progress
-	gameRelation.Players = append(gameRelation.Players, player)
-	defer playerDisconnect(gameRelation, gameId, *player)
-	gameService.Set(gameId, gameRelation)
+	player := obj.(*Player)
+	player.conn = conn
+	player.comm = make(chan map[string]interface{})
+	defer close(player.comm)
 
 	// get the game from the db to load the state, other info
 	g, err := db.Get(Game{}, gameId)
@@ -145,14 +152,6 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 		return
 	}
 	game := g.(*Game)
-
-	// get the other players that are in the game?
-	var players []Player
-	_, err = db.Select(&players, "select * from players where game=?", gameId)
-	if err != nil {
-		log.Printf("Unable to find players in game: %#v", err)
-		return
-	}
 
 	// start a goroutine dedicated to listening to the websocket
 	wsReadChan := make(chan map[string]interface{})
@@ -163,20 +162,35 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 			err := conn.ReadJSON(&msg)
 			if err != nil {
 				log.Printf("Error message from websocket: %#v", err)
-				playerDisconnect(gameRelation, gameId, *player)
-				gameRelation.Comm <- map[string]interface{}{"type": "leave"}
 				return
 			}
 			log.Printf("Got message: %v", msg)
 			wsReadChan <- msg
 		}
 	}()
+	defer func() {
+		if _, ok := <-wsReadChan; !ok {
+			close(wsReadChan)
+		}
+	}()
 
 	if player.Role == Host {
+		// create the host channel. when this channel is closed/nil it means the host is not connected
+		ChannelMap[gameId].host = make(chan map[string]interface{})
+		defer close(ChannelMap[gameId].host)
+
+		// get the other players that are in the game
+		var players []Player
+		_, err = db.Select(&players, "select * from players where game=?", gameId)
+		if err != nil {
+			log.Printf("Unable to find players in game: %#v", err)
+			return
+		}
+
 		log.Printf("Host is connected: %#v", player)
 		player.conn.WriteJSON(map[string]interface{}{
 			"type":    "players",
-			"players": gameRelation.Players,
+			"players": players,
 		})
 		player.conn.WriteJSON(map[string]interface{}{
 			"type":  "state",
@@ -184,7 +198,7 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 		})
 		for {
 			select {
-			case msg := <-wsReadChan: // host website action
+			case msg, ok := <-wsReadChan: // host website action
 				switch {
 				case msg["type"] == "state":
 					log.Printf("Got state change request from host: %v", msg["state"])
@@ -207,12 +221,12 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 					if err != nil {
 						log.Printf("Error getting board: %#v", board)
 					}
-					for i, p := range gameRelation.Players {
+					for _, p := range players {
 						if p.Role == Host { // this will hang everything
 							continue
 						}
 						log.Printf("Trying to sent to player %#v", p.Id)
-						gameRelation.Players[i].comm <- map[string]interface{}{
+						ChannelMap[gameId].players[p.Id] <- map[string]interface{}{
 							"type":  "update",
 							"board": board,
 							"state": "start",
@@ -225,22 +239,46 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 						"state": "start",
 					})
 				default:
-					log.Printf("Unknown web message from host: %#v", msg)
+					if !ok {
+						// the connection was dropped so return
+						return
+					} else {
+						log.Printf("Unknown web message from host: %#v", msg)
+					}
 				}
-			case msg := <-gameRelation.Comm: // server side message from player to host
+			case msg := <-ChannelMap[gameId].host: // server side message from player to host
 				switch {
 				case msg["type"] == "join":
 					fallthrough
 				case msg["type"] == "leave":
 					log.Printf("player %v", msg["type"])
 					// send a fresh list of players to the UI
+					_, err = db.Select(&players, "select * from players where game=?", gameId)
+					if err != nil {
+						log.Printf("Failed to select players for game %v", gameId)
+						return
+					}
+
+					var connected []*Player
+					for _, p := range players {
+						if _, ok := ChannelMap[gameId].players[p.Id]; ok {
+							connected = append(connected, &p)
+						}
+					}
+
 					player.conn.WriteJSON(map[string]interface{}{
 						"type":    "players",
-						"players": gameRelation.Players,
+						"players": connected,
 					})
 				case msg["type"] == "move":
+					_, err = db.Select(&players, "select * from players where game=?", gameId)
+					if err != nil {
+						log.Printf("Failed to select players during move for game %v", gameId)
+						return
+					}
+
 					resolveRound := true
-					for _, p := range gameRelation.Players {
+					for _, p := range players {
 						if p.Role != Host && p.ThisTurn == -1 {
 							resolveRound = false
 						}
@@ -248,9 +286,10 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 					if !resolveRound {
 						continue
 					}
+
 					// all players have set their moves, update the board and send it out
 					thisRound := []int{0, 0, 0, 0, 0, 0, 0, 0, 0}
-					for _, p := range gameRelation.Players {
+					for _, p := range players {
 						if p.Role != Host {
 							if thisRound[p.ThisTurn] == 0 {
 								thisRound[p.ThisTurn] = p.Id
@@ -276,12 +315,17 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 						log.Printf("Unable to save game after move: %v", err)
 						return
 					}
-					for i, p := range gameRelation.Players {
+					for _, p := range players {
 						if p.Role == Host {
 							continue
 						}
-						gameRelation.Players[i].ThisTurn = -1
-						gameRelation.Players[i].comm <- map[string]interface{}{
+						p.ThisTurn = -1
+						count, err := db.Update(player)
+						if count == 0 || err != nil {
+							log.Printf("Failed to update rejoining player: %#v", player)
+							return
+						}
+						ChannelMap[gameId].players[p.Id] <- map[string]interface{}{
 							"type":  "update",
 							"board": board,
 							"state": "start",
@@ -298,6 +342,8 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 			}
 		}
 	} else {
+		player.comm = make(chan map[string]interface{})
+		ChannelMap[gameId].players[player.Id] = player.comm
 		log.Printf("Player is connected: %#v", player)
 		board, _ := game.getBoard()
 		// There may not be a board yet so just try and send it
@@ -307,20 +353,24 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 			"board": board,
 		})
 		// Tell the host we've joined
-		gameRelation.Comm <- map[string]interface{}{"type": "join"}
+		ChannelMap[gameId].host <- map[string]interface{}{"type": "join"}
 		player.ThisTurn = -1
 		log.Printf("Player %v waiting for messages", player.Id)
 		for {
 			select {
-			case msg := <-wsReadChan: // player website action
+			case msg, ok := <-wsReadChan: // player website action
 				switch {
 				case msg["type"] == "move":
 					// the player move comes as an integer from [0-8] representing the location of the move
 					// TODO: assert this is the case before saving
 					player.ThisTurn = int(msg["move"].(float64))
-					gameRelation.Comm <- msg
+					ChannelMap[gameId].host <- msg
 				default:
-					log.Printf("Unknown web message from player: %#v", msg)
+					if !ok {
+						return
+					} else {
+						log.Printf("Unknown web message from player: %#v", msg)
+					}
 				}
 			case msg := <-player.comm: // messages from host
 				// it may be safe to just take any message from the host and just send it
@@ -329,15 +379,4 @@ func wsHandler(r render.Render, w http.ResponseWriter, req *http.Request, params
 			}
 		}
 	}
-}
-
-func playerDisconnect(game *GameRelation, gameId string, player Player) {
-	// Since Games represents CONNECTED players, we need to delete them when they dc
-	for i := range game.Players {
-		if player.Id == game.Players[i].Id {
-			game.Players = append(game.Players[:i], game.Players[i+1:]...)
-			return
-		}
-	}
-	log.Printf("Failed to remove player")
 }
