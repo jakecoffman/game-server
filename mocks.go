@@ -76,3 +76,27 @@ func (m *MockGameService) NewGame(db *gorp.DbMap) (*Game, *Player, error) {
 func (m *MockGameService) ConnectToGame(db *gorp.DbMap, gameId string, playerObj interface{}) (*Game, *Player, error) {
 	return m.Game, m.Player, m.Error
 }
+
+func (m *MockGameService) Register(gameId string) {
+
+}
+
+func (m *MockGameService) HostJoin(gameId string) chan Message {
+	return nil
+}
+
+func (m *MockGameService) HostLeave(gameId string) {
+
+}
+
+func (m *MockGameService) PlayerJoin(gameId string, playerId int) (chan Message, chan Message) {
+	return nil, nil
+}
+
+func (m *MockGameService) PlayerLeave(gameId string, playerId int) {
+
+}
+
+func (m *MockGameService) Broadcast(gameId string, msg Message) {
+
+}

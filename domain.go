@@ -6,7 +6,6 @@ import (
 	"log"
 
 	"github.com/coopernurse/gorp"
-	"github.com/gorilla/websocket"
 	"github.com/nu7hatch/gouuid"
 )
 
@@ -22,12 +21,10 @@ const (
 // These top structures are saved to the database
 
 type Player struct {
-	Id       int             `json:"id"`     // maintain map of session ids to player ids so players may rejoin when dropped
-	Game     string          `json:"string"` // current game we are in (foreign key)
-	Role     Role            `json:"role"`
-	conn     *websocket.Conn `db:"-" json:"-"` // unexported so gob doesn't try to seriealize it
-	comm     chan Message    `db:"-" json:"-"`
-	ThisTurn int             `db:"this_turn"`
+	Id       int    `json:"id"`     // maintain map of session ids to player ids so players may rejoin when dropped
+	Game     string `json:"string"` // current game we are in (foreign key)
+	Role     Role   `json:"role"`
+	ThisTurn int    `db:"this_turn"`
 }
 
 func NewPlayer(gameId string, role Role) *Player {
@@ -68,6 +65,12 @@ func (g *Game) setBoard(v []int) error {
 type GameService interface {
 	NewGame(db *gorp.DbMap) (*Game, *Player, error)
 	ConnectToGame(db *gorp.DbMap, gameId string, playerObj interface{}) (*Game, *Player, error)
+	Register(gameId string)
+	HostJoin(gameId string) chan Message
+	HostLeave(gameId string)
+	PlayerJoin(gameId string, playerId int) (chan Message, chan Message)
+	PlayerLeave(gameId string, playerId int)
+	Broadcast(gameId string, msg Message)
 }
 
 // TODO: this all needs to be in a different package
@@ -75,13 +78,35 @@ type GameServiceImpl struct {
 	ChannelMap map[string]*Channels
 }
 
-func (gs *GameServiceImpl) GetChannels(gameId string) (*Channels, error) {
-	c, err := gs.ChannelMap[gameId]
-	return c, err
+func (gs *GameServiceImpl) Register(gameId string) {
+	if gs.ChannelMap == nil {
+		gs.ChannelMap = map[string]*Channels{}
+	}
+	gs.ChannelMap[gameId] = &Channels{players: map[int]chan Message{}}
 }
 
-func (gs *GameServiceImpl) SetChannels(gameId string, channels *Channels) {
-	gs.ChannelMap[gameId] = channels
+func (gs *GameServiceImpl) HostJoin(gameId string) chan Message {
+	gs.ChannelMap[gameId].host = make(chan Message)
+	return gs.ChannelMap[gameId].host
+}
+
+func (gs *GameServiceImpl) HostLeave(gameId string) {
+	close(gs.ChannelMap[gameId].host)
+}
+
+func (gs *GameServiceImpl) PlayerJoin(gameId string, playerId int) (chan Message, chan Message) {
+	gs.ChannelMap[gameId].players[playerId] = make(chan Message)
+	return gs.ChannelMap[gameId].players[playerId], gs.ChannelMap[gameId].host
+}
+
+func (gs *GameServiceImpl) PlayerLeave(gameId string, playerId int) {
+	close(gs.ChannelMap[gameId].players[playerId])
+}
+
+func (gs *GameServiceImpl) Broadcast(gameId string, msg Message) {
+	for _, p := range gs.ChannelMap[gameId].players {
+		p <- msg
+	}
 }
 
 func (gs *GameServiceImpl) NewGame(db *gorp.DbMap) (*Game, *Player, error) {

@@ -28,7 +28,7 @@ func main() {
 	m.Get("/ws/:id", WebsocketHandler)
 
 	m.Map(initDb("dev.db"))
-	m.MapTo(&GameServiceImpl{Channels: map[string]*Channels{}}, (*GameService)(nil))
+	m.MapTo(&GameServiceImpl{ChannelMap: map[string]*Channels{}}, (*GameService)(nil))
 
 	m.Run()
 }

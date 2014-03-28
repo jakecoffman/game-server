@@ -15,9 +15,6 @@ var db = &gorp.DbMap{} // DB should not be used in these handler tests
 
 func setUp() {
 	session.Clear()
-
-	// TODO: Move the ChannelsMap into GameServices
-	ChannelMap = map[string]*Channels{}
 }
 
 func Test_NewGameHandler(t *testing.T) {
@@ -60,11 +57,6 @@ func Test_GetGameHandler_Host(t *testing.T) {
 		t.Errorf("Didn't put player ID in session", session.Get("player_id"))
 		return
 	}
-	_, ok := ChannelMap["Hello"]
-	if !ok {
-		t.Errorf("Didn't create channel map")
-		return
-	}
 }
 
 func Test_GetGameHandler_Player(t *testing.T) {
@@ -82,11 +74,6 @@ func Test_GetGameHandler_Player(t *testing.T) {
 	}
 	if session.Get("player_id") != 7 {
 		t.Errorf("Didn't put player ID in session", session.Get("player_id"))
-		return
-	}
-	_, ok := ChannelMap["Hello"]
-	if !ok {
-		t.Errorf("Didn't create channel map")
 		return
 	}
 }

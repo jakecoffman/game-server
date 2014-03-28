@@ -47,7 +47,7 @@ func GetGameHandler(r render.Render, params martini.Params, db *gorp.DbMap, game
 	session.Set("player_id", player.Id)
 
 	// Create a Channel object so players and host can join
-	ChannelMap[game.Id] = &Channels{players: map[int]chan Message{}}
+	gameService.Register(game.Id)
 
 	// inform the UI of who this is
 	if player.Role == Host {
@@ -58,8 +58,8 @@ func GetGameHandler(r render.Render, params martini.Params, db *gorp.DbMap, game
 }
 
 // handles the websocket connections for the game
-func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request, params martini.Params, db *gorp.DbMap, session sessions.Session, log *log.Logger) {
-	conn, err := websocket.Upgrade(w, req, nil, 1024, 1024)
+func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request, params martini.Params, db *gorp.DbMap, gameService GameService, session sessions.Session, log *log.Logger) {
+	ws, err := websocket.Upgrade(w, req, nil, 1024, 1024)
 	if _, ok := err.(websocket.HandshakeError); ok {
 		http.Error(w, "Not a websocket handshake", 400)
 		return
@@ -67,7 +67,7 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 		log.Println(err)
 		return
 	}
-	defer conn.Close()
+	defer ws.Close()
 	log.Println("Succesfully upgraded connection")
 
 	// get the player
@@ -83,9 +83,6 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 		return
 	}
 	player := obj.(*Player)
-	player.conn = conn
-	player.comm = make(chan Message)
-	defer close(player.comm)
 
 	// get the game from the db to load the state, other info
 	g, err := db.Get(Game{}, gameId)
@@ -101,7 +98,7 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 		msg := Message{}
 		for {
 			// Blocks
-			err := conn.ReadJSON(&msg)
+			err := ws.ReadJSON(&msg)
 			if err != nil {
 				log.Printf("Error message from websocket: %#v", err)
 				return
@@ -117,24 +114,23 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 	}()
 
 	if player.Role == Host {
-		// create the host channel. when this channel is closed/nil it means the host is not connected
-		ChannelMap[gameId].host = make(chan Message)
-		defer close(ChannelMap[gameId].host)
+		log.Printf("Host is connected: %#v", player.Id)
+		// TODO: Instead of all of this, make a Register and Unregister, and a Broadcast and Host methods.
+		hostComm := gameService.HostJoin(gameId)
+		defer gameService.HostLeave(gameId)
 
 		// get the other players that are in the game
-		var players []Player
+		var players []*Player
 		_, err = db.Select(&players, "select * from players where game=?", gameId)
 		if err != nil {
 			log.Printf("Unable to find players in game: %#v", err)
 			return
 		}
-
-		log.Printf("Host is connected: %#v", player)
-		player.conn.WriteJSON(Message{
+		ws.WriteJSON(Message{
 			"type":    "players",
 			"players": players,
 		})
-		player.conn.WriteJSON(Message{
+		ws.WriteJSON(Message{
 			"type":  "state",
 			"state": game.State,
 		})
@@ -158,24 +154,18 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 						log.Printf("Unable to change game state: %v", err)
 						return
 					}
-					log.Printf("Sending state %v to all players", msg["state"])
 					board, err := game.getBoard()
 					if err != nil {
 						log.Printf("Error getting board: %#v", board)
 					}
-					for _, p := range players {
-						if p.Role == Host { // this will hang everything
-							continue
-						}
-						log.Printf("Trying to sent to player %#v", p.Id)
-						ChannelMap[gameId].players[p.Id] <- Message{
-							"type":  "update",
-							"board": board,
-							"state": "start",
-						}
-						log.Printf("Message sent to player %#v", p.Id)
-					}
-					player.conn.WriteJSON(Message{
+					log.Printf("Sending state %v to all players", msg["state"])
+					gameService.Broadcast(gameId, Message{
+						"type":  "update",
+						"board": board,
+						"state": "start",
+					})
+					log.Printf("Updating UI")
+					ws.WriteJSON(Message{
 						"type":  "update",
 						"board": board,
 						"state": "start",
@@ -188,7 +178,7 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 						log.Printf("Unknown web message from host: %#v", msg)
 					}
 				}
-			case msg := <-ChannelMap[gameId].host: // server side message from player to host
+			case msg := <-hostComm: // server side message from player to host
 				switch {
 				case msg["type"] == "join":
 					fallthrough
@@ -200,17 +190,9 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 						log.Printf("Failed to select players for game %v", gameId)
 						return
 					}
-
-					var connected []*Player
-					for _, p := range players {
-						if _, ok := ChannelMap[gameId].players[p.Id]; ok {
-							connected = append(connected, &p)
-						}
-					}
-
-					player.conn.WriteJSON(Message{
+					ws.WriteJSON(Message{
 						"type":    "players",
-						"players": connected,
+						"players": obj,
 					})
 				case msg["type"] == "move":
 					_, err = db.Select(&players, "select * from players where game=?", gameId)
@@ -267,13 +249,13 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 							log.Printf("Failed to update rejoining player: %#v", player)
 							return
 						}
-						ChannelMap[gameId].players[p.Id] <- Message{
-							"type":  "update",
-							"board": board,
-							"state": "start",
-						}
 					}
-					player.conn.WriteJSON(Message{
+					gameService.Broadcast(gameId, Message{
+						"type":  "update",
+						"board": board,
+						"state": "start",
+					})
+					ws.WriteJSON(Message{
 						"type":  "update",
 						"board": board,
 						"state": "start",
@@ -284,18 +266,20 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 			}
 		}
 	} else {
-		player.comm = make(chan Message)
-		ChannelMap[gameId].players[player.Id] = player.comm
-		log.Printf("Player is connected: %#v", player)
+		log.Printf("Player is connected: %#v", player.Id)
+		playerComm, hostComm := gameService.PlayerJoin(gameId, player.Id)
+		defer gameService.PlayerLeave(gameId, player.Id)
 		board, _ := game.getBoard()
 		// There may not be a board yet so just try and send it
-		player.conn.WriteJSON(Message{
+		ws.WriteJSON(Message{
 			"type":  "update",
 			"state": game.State,
 			"board": board,
 		})
 		// Tell the host we've joined
-		ChannelMap[gameId].host <- Message{"type": "join"}
+		log.Printf("SENDING TO HOST")
+		hostComm <- Message{"type": "join"}
+		log.Printf("SENT TO HOST")
 		player.ThisTurn = -1
 		log.Printf("Player %v waiting for messages", player.Id)
 		for {
@@ -306,7 +290,7 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 					// the player move comes as an integer from [0-8] representing the location of the move
 					// TODO: assert this is the case before saving
 					player.ThisTurn = int(msg["move"].(float64))
-					ChannelMap[gameId].host <- msg
+					hostComm <- msg
 				default:
 					if !ok {
 						return
@@ -314,10 +298,10 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 						log.Printf("Unknown web message from player: %#v", msg)
 					}
 				}
-			case msg := <-player.comm: // messages from host
+			case msg := <-playerComm: // messages from host
 				// it may be safe to just take any message from the host and just send it
 				log.Printf("Sending %v to player %v", msg["type"], player.Id)
-				player.conn.WriteJSON(msg)
+				ws.WriteJSON(msg)
 			}
 		}
 	}
