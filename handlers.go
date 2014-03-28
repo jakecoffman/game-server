@@ -196,6 +196,7 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 						"players": players,
 					})
 				case msg["type"] == "move":
+					log.Printf("Checking player move")
 					players = nil
 					_, err = db.Select(&players, "select * from players where game=?", gameId)
 					if err != nil {
@@ -210,6 +211,7 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 						}
 					}
 					if !resolveRound {
+						log.Printf("Round cannot be resolved")
 						continue
 					}
 
@@ -246,9 +248,10 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 							continue
 						}
 						p.ThisTurn = -1
-						count, err := db.Update(player)
+						log.Printf("Resetting player %v turn", p.Id)
+						count, err := db.Update(p)
 						if count == 0 || err != nil {
-							log.Printf("Failed to update rejoining player: %#v", player)
+							log.Printf("Failed to update playing player: %#v", p)
 							return
 						}
 					}
@@ -291,9 +294,16 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 			case msg, ok := <-wsReadChan: // player website action
 				switch {
 				case msg["type"] == "move":
+					log.Printf("Sending move to host")
 					// the player move comes as an integer from [0-8] representing the location of the move
 					// TODO: assert this is the case before saving
 					player.ThisTurn = int(msg["move"].(float64))
+					count, err := db.Update(player)
+					if count == 0 || err != nil {
+						log.Printf("Failed to update moving player: %#v", player)
+						return
+					}
+
 					hostWrite <- msg
 				default:
 					if !ok {
