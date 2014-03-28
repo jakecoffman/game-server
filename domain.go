@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 
 	"github.com/coopernurse/gorp"
@@ -73,20 +74,25 @@ type GameService interface {
 	Broadcast(gameId string, msg Message)
 }
 
+type Channels struct {
+	players map[int]chan Message
+	host    chan Message
+}
+
 // TODO: this all needs to be in a different package
 type GameServiceImpl struct {
 	ChannelMap map[string]*Channels
 }
 
 func (gs *GameServiceImpl) Register(gameId string) {
-	if gs.ChannelMap == nil {
-		gs.ChannelMap = map[string]*Channels{}
+	if _, ok := gs.ChannelMap[gameId]; !ok {
+		gs.ChannelMap[gameId] = &Channels{players: map[int]chan Message{}}
 	}
-	gs.ChannelMap[gameId] = &Channels{players: map[int]chan Message{}}
 }
 
 func (gs *GameServiceImpl) HostJoin(gameId string) chan Message {
 	gs.ChannelMap[gameId].host = make(chan Message)
+	fmt.Printf("HOST IS INITIALIZED: %#v -- %#v\n", gameId, gs.ChannelMap[gameId].host)
 	return gs.ChannelMap[gameId].host
 }
 
@@ -96,6 +102,7 @@ func (gs *GameServiceImpl) HostLeave(gameId string) {
 
 func (gs *GameServiceImpl) PlayerJoin(gameId string, playerId int) (chan Message, chan Message) {
 	gs.ChannelMap[gameId].players[playerId] = make(chan Message)
+	fmt.Printf("HOSTY HOSTY: %#v -- %#v\n", gameId, gs.ChannelMap[gameId].host)
 	return gs.ChannelMap[gameId].players[playerId], gs.ChannelMap[gameId].host
 }
 

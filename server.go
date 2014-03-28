@@ -10,11 +10,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-type Channels struct {
-	players map[int]chan Message
-	host    chan Message
-}
-
 func main() {
 	m := martini.Classic()
 

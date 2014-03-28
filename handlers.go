@@ -59,6 +59,7 @@ func GetGameHandler(r render.Render, params martini.Params, db *gorp.DbMap, game
 
 // handles the websocket connections for the game
 func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request, params martini.Params, db *gorp.DbMap, gameService GameService, session sessions.Session, log *log.Logger) {
+	log.Printf("Heeeeeeeeeeeeeeeeeeeeeeeeeeeeeere: %#v", gameService)
 	ws, err := websocket.Upgrade(w, req, nil, 1024, 1024)
 	if _, ok := err.(websocket.HandshakeError); ok {
 		http.Error(w, "Not a websocket handshake", 400)
@@ -116,8 +117,10 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 	if player.Role == Host {
 		log.Printf("Host is connected: %#v", player.Id)
 		// TODO: Instead of all of this, make a Register and Unregister, and a Broadcast and Host methods.
-		hostComm := gameService.HostJoin(gameId)
+		hostRead := gameService.HostJoin(gameId)
 		defer gameService.HostLeave(gameId)
+
+		log.Printf("HOST READ: %#v", hostRead)
 
 		// get the other players that are in the game
 		var players []*Player
@@ -178,7 +181,7 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 						log.Printf("Unknown web message from host: %#v", msg)
 					}
 				}
-			case msg := <-hostComm: // server side message from player to host
+			case msg := <-hostRead: // server side message from player to host
 				switch {
 				case msg["type"] == "join":
 					fallthrough
@@ -267,7 +270,7 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 		}
 	} else {
 		log.Printf("Player is connected: %#v", player.Id)
-		playerComm, hostComm := gameService.PlayerJoin(gameId, player.Id)
+		playerRead, hostWrite := gameService.PlayerJoin(gameId, player.Id)
 		defer gameService.PlayerLeave(gameId, player.Id)
 		board, _ := game.getBoard()
 		// There may not be a board yet so just try and send it
@@ -277,9 +280,11 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 			"board": board,
 		})
 		// Tell the host we've joined
-		log.Printf("SENDING TO HOST")
-		hostComm <- Message{"type": "join"}
-		log.Printf("SENT TO HOST")
+
+		log.Printf("HOST WRITE: %#v", hostWrite)
+
+		hostWrite <- Message{"type": "join"}
+
 		player.ThisTurn = -1
 		log.Printf("Player %v waiting for messages", player.Id)
 		for {
@@ -290,7 +295,7 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 					// the player move comes as an integer from [0-8] representing the location of the move
 					// TODO: assert this is the case before saving
 					player.ThisTurn = int(msg["move"].(float64))
-					hostComm <- msg
+					hostWrite <- msg
 				default:
 					if !ok {
 						return
@@ -298,7 +303,7 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 						log.Printf("Unknown web message from player: %#v", msg)
 					}
 				}
-			case msg := <-playerComm: // messages from host
+			case msg := <-playerRead: // messages from host
 				// it may be safe to just take any message from the host and just send it
 				log.Printf("Sending %v to player %v", msg["type"], player.Id)
 				ws.WriteJSON(msg)
