@@ -36,7 +36,7 @@ func GetGameHandler(r render.Render, params martini.Params, db *gorp.DbMap, game
 	// and the player from the session
 	obj := session.Get("player_id")
 
-	game, player, err := gameService.ConnectToGame(db, gameId, obj)
+	_, player, err := gameService.ConnectToGame(db, gameId, obj)
 	if err != nil {
 		log.Printf("Failed to connect to game: %v", err)
 		r.JSON(500, Message{"message": "Failed to connect to game"})
@@ -45,9 +45,6 @@ func GetGameHandler(r render.Render, params martini.Params, db *gorp.DbMap, game
 
 	// save to the session so the websocket handler so we recognize them when they join a game
 	session.Set("player_id", player.Id)
-
-	// Create a Channel object so players and host can join
-	gameService.Register(game.Id)
 
 	// inform the UI of who this is
 	if player.Role == Host {
@@ -188,6 +185,7 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 				case msg["type"] == "leave":
 					log.Printf("player %v", msg["type"])
 					// send a fresh list of players to the UI
+					players = nil
 					_, err = db.Select(&players, "select * from players where game=?", gameId)
 					if err != nil {
 						log.Printf("Failed to select players for game %v", gameId)
@@ -195,9 +193,10 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 					}
 					ws.WriteJSON(Message{
 						"type":    "players",
-						"players": obj,
+						"players": players,
 					})
 				case msg["type"] == "move":
+					players = nil
 					_, err = db.Select(&players, "select * from players where game=?", gameId)
 					if err != nil {
 						log.Printf("Failed to select players during move for game %v", gameId)

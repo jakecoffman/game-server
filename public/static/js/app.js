@@ -69,8 +69,8 @@ app.controller('GameCtl', function($scope, $http, $routeParams, $http){
 
 		conn.onmessage = function(e){
 			$scope.$apply(function(){
-				console.log(e);
 				var msg = JSON.parse(e.data);
+				console.log(msg);
 				switch(msg.type) {
 					case "host":
 						$scope.isHost = msg.host;

@@ -66,7 +66,6 @@ func (g *Game) setBoard(v []int) error {
 type GameService interface {
 	NewGame(db *gorp.DbMap) (*Game, *Player, error)
 	ConnectToGame(db *gorp.DbMap, gameId string, playerObj interface{}) (*Game, *Player, error)
-	Register(gameId string)
 	HostJoin(gameId string) chan Message
 	HostLeave(gameId string)
 	PlayerJoin(gameId string, playerId int) (chan Message, chan Message)
@@ -82,12 +81,6 @@ type Channels struct {
 // TODO: this all needs to be in a different package
 type GameServiceImpl struct {
 	ChannelMap map[string]*Channels
-}
-
-func (gs *GameServiceImpl) Register(gameId string) {
-	if _, ok := gs.ChannelMap[gameId]; !ok {
-		gs.ChannelMap[gameId] = &Channels{players: map[int]chan Message{}}
-	}
 }
 
 func (gs *GameServiceImpl) HostJoin(gameId string) chan Message {
@@ -108,6 +101,7 @@ func (gs *GameServiceImpl) PlayerJoin(gameId string, playerId int) (chan Message
 
 func (gs *GameServiceImpl) PlayerLeave(gameId string, playerId int) {
 	close(gs.ChannelMap[gameId].players[playerId])
+	delete(gs.ChannelMap[gameId].players, playerId)
 }
 
 func (gs *GameServiceImpl) Broadcast(gameId string, msg Message) {
@@ -133,6 +127,8 @@ func (gs *GameServiceImpl) NewGame(db *gorp.DbMap) (*Game, *Player, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+
+	gs.ChannelMap[game.Id] = &Channels{players: map[int]chan Message{}}
 
 	return game, player, nil
 }
