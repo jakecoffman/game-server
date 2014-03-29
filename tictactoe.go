@@ -66,14 +66,27 @@ func HostConn(player *Player, game *Game, gameService GameService, ws *websocket
 		log.Printf("Unable to find players in game: %#v", err)
 		return
 	}
-	ws.WriteJSON(Message{
-		"type":    "players",
-		"players": players,
-	})
-	ws.WriteJSON(Message{
-		"type":  "state",
-		"state": game.State,
-	})
+	if game.State == "lobby" {
+		ws.WriteJSON(Message{
+			"type":    "players",
+			"players": players,
+		})
+		ws.WriteJSON(Message{
+			"type":  "state",
+			"state": game.State,
+		})
+	} else {
+		board, err := game.getBoard()
+		if err != nil {
+			log.Printf("Can't init with board: %#v", err)
+			return
+		}
+		ws.WriteJSON(Message{
+			"type":  "update",
+			"board": board,
+			"state": "start",
+		})
+	}
 	for {
 		select {
 		case msg, ok := <-wsReadChan: // host website action

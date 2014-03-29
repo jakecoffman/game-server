@@ -32,12 +32,12 @@ type GameServiceImpl struct {
 
 func (gs *GameServiceImpl) HostJoin(gameId string) chan Message {
 	gs.ChannelMap[gameId].host = make(chan Message)
-	fmt.Printf("HOST IS INITIALIZED: %#v -- %#v\n", gameId, gs.ChannelMap[gameId].host)
 	return gs.ChannelMap[gameId].host
 }
 
 func (gs *GameServiceImpl) HostLeave(gameId string) {
 	close(gs.ChannelMap[gameId].host)
+	gs.ChannelMap[gameId].host = nil
 }
 
 func (gs *GameServiceImpl) PlayerJoin(gameId string, playerId int) (chan Message, chan Message) {
