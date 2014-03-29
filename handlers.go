@@ -68,27 +68,19 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 	defer ws.Close()
 	log.Println("Succesfully upgraded connection")
 
-	// get the player
+	// get the player and game from the database
 	gameId := params["id"]
 	p := session.Get("player_id")
 	if p == nil {
 		log.Println("Player not found in session")
 		return
 	}
-	obj, err := db.Get(Player{}, p)
+	playerId := p.(int)
+	game, player, err := gameService.GetGame(db, gameId, playerId)
 	if err != nil {
-		log.Printf("Could not find player with id %v in database", p)
+		log.Printf("Could not get game and/or player: %#v", err)
 		return
 	}
-	player := obj.(*Player)
-
-	// get the game from the db to load the state, other info
-	g, err := db.Get(Game{}, gameId)
-	if err != nil {
-		log.Printf("Unable to find game %v", gameId)
-		return
-	}
-	game := g.(*Game)
 
 	// start a goroutine dedicated to listening to the websocket
 	wsReadChan := make(chan Message)

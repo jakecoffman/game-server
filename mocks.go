@@ -77,8 +77,8 @@ func (m *MockGameService) ConnectToGame(db *gorp.DbMap, gameId string, playerObj
 	return m.Game, m.Player, m.Error
 }
 
-func (m *MockGameService) Register(gameId string) {
-
+func (m *MockGameService) GetGame(db *gorp.DbMap, gameId string, playerId int) (*Game, *Player, error) {
+	return m.Game, m.Player, m.Error
 }
 
 func (m *MockGameService) HostJoin(gameId string) chan Message {

@@ -5,19 +5,25 @@ import (
 )
 
 func Test_GameService(t *testing.T) {
-	gameId := "6"
-	playerId := 4
-	gs := GameServiceImpl{}
-	gs.Register(gameId)
-	hostRead := gs.HostJoin(gameId)
-	defer gs.HostLeave(gameId)
+	db := initDb("services_test.db")
+	db.DropTables()
+	db = initDb("services_test.db")
+
+	gs := GameServiceImpl{ChannelMap: map[string]*Channels{}}
+	game, player, err := gs.NewGame(db)
+	if err != nil {
+		t.Errorf("New game error: %#v", err)
+		return
+	}
+	hostRead := gs.HostJoin(game.Id)
+	defer gs.HostLeave(game.Id)
 	if hostRead == nil {
 		t.Errorf("Failed to initialize host channels")
 		return
 	}
 
-	playerRead, hostWrite := gs.PlayerJoin(gameId, playerId)
-	defer gs.PlayerLeave(gameId, playerId)
+	playerRead, hostWrite := gs.PlayerJoin(game.Id, player.Id)
+	defer gs.PlayerLeave(game.Id, player.Id)
 
 	if playerRead == nil || hostWrite == nil {
 		t.Errorf("Failed to initialize player channels")
@@ -40,7 +46,7 @@ func Test_GameService(t *testing.T) {
 	go func() {
 		actual2 = <-playerRead
 	}()
-	gs.Broadcast(gameId, expected)
+	gs.Broadcast(game.Id, expected)
 
 	if actual2["hi"] != expected["hi"] {
 		t.Errorf("Couldn't send from host to player")
