@@ -30,11 +30,15 @@ app.controller('GameCtl', function($scope, $http, $routeParams, $http){
 	$scope.state = "waiting";
 	$scope.players = [];
 
+	$scope.url = "192.168.1.106:3000"
+
+	console.log("HERE");
 	// Have to do an initial GET... workaround for martini sessions
 	$http({
 		method: "GET",
 		url: "/game/" + $scope.id
 	}).success(function(data) {
+		console.log("Initial GET was successful, trying to connect via websocket.")
 		$scope.isHost = data.host;
 		$scope.connectWs();
 	}).error(function(data, status){
@@ -51,7 +55,7 @@ app.controller('GameCtl', function($scope, $http, $routeParams, $http){
 	};
 
 	$scope.connectWs = function(){
-		var conn = new WebSocket("ws://localhost:3000/ws/" + $scope.id);
+		var conn = new WebSocket("ws://" + $scope.url + "/ws/" + $scope.id);
 
 		conn.onclose = function(e){
 			$scope.$apply(function(){

@@ -21,13 +21,11 @@
 		<h1>Waiting for players</h1>
 		<p>Scan this code to join or enter this URL manually:</p>
 		<p>
-			<a href="http://localhost:3000/#/game/{{id}}">http://localhost:3000/#/game/{{id}}</a>
+			<a href="http://{{url}}/#/game/{{id}}">http://{{url}}/#/game/{{id}}</a>
 		</p>
 		
 		<div class="col-sm-9">
-			<center>
-				<qrcode data="http://localhost:3000/#/game/{{id}}" version="5" size="400"></qrcode>
-			</center>
+			<qrcode data="http://{{url}}/#/game/{{id}}" version="5" size="300"></qrcode>
 		</div>
 		<div class="col-sm-3">
 			<button class="btn btn-primary btn-lg" ng-click="start()">Start game</button>
