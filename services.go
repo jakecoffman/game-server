@@ -95,8 +95,7 @@ func (gs *GameServiceImpl) ConnectToGame(db *gorp.DbMap, gameId string, playerOb
 	var player *Player
 	if playerObj == nil { // no, it's a new player
 		player = &Player{
-			Game:     game.Id,
-			ThisTurn: -1,
+			Game: game.Id,
 		}
 
 		// save to db so we can find them if they disconnect
@@ -113,7 +112,6 @@ func (gs *GameServiceImpl) ConnectToGame(db *gorp.DbMap, gameId string, playerOb
 		// TODO: this would screw with any games they are currently already in?
 		if player.Game != game.Id {
 			player.Game = game.Id
-			player.ThisTurn = -1
 			count, err := db.Update(player)
 			if count == 0 {
 				return nil, nil, errors.New("Player update effected 0 rows")
