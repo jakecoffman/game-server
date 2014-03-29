@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"log"
 
 	"github.com/coopernurse/gorp"
@@ -42,7 +41,6 @@ func (gs *GameServiceImpl) HostLeave(gameId string) {
 
 func (gs *GameServiceImpl) PlayerJoin(gameId string, playerId int) (chan Message, chan Message) {
 	gs.ChannelMap[gameId].players[playerId] = make(chan Message)
-	fmt.Printf("HOSTY HOSTY: %#v -- %#v\n", gameId, gs.ChannelMap[gameId].host)
 	return gs.ChannelMap[gameId].players[playerId], gs.ChannelMap[gameId].host
 }
 
@@ -69,7 +67,11 @@ func (gs *GameServiceImpl) NewGame(db *gorp.DbMap) (*Game, *Player, error) {
 		return nil, nil, err
 	}
 
-	player := NewPlayer(game.Id, Host)
+	player := &Player{
+		Game: game.Id,
+		Role: Host,
+	}
+
 	err = db.Insert(player)
 	if err != nil {
 		return nil, nil, err

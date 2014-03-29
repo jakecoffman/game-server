@@ -7,31 +7,20 @@ type Role int
 const (
 	Unassigned = iota
 	Host
-	Mafia
-	Townsperson
+	Kibitz
 )
-
-// These top structures are saved to the database
 
 type Player struct {
 	Id       int    `json:"id"`     // maintain map of session ids to player ids so players may rejoin when dropped
 	Game     string `json:"string"` // current game we are in (foreign key)
 	Role     Role   `json:"role"`
-	ThisTurn int    `db:"this_turn"`
-}
-
-func NewPlayer(gameId string, role Role) *Player {
-	return &Player{
-		Game: gameId,
-		Role: role,
-	}
+	ThisTurn int    `json:"this_turn"`
 }
 
 type Game struct {
-	Id       string       `json:"id"` // UUID
-	State    string       `json:"state"`
-	Board    string       `json:"board"` // JSON string of board (so it can be persisted in the DB)
-	hostChan chan Message `json:"-" db:"-"`
+	Id    string `json:"id"` // UUID
+	State string `json:"state"`
+	Board string `json:"board"` // JSON string of board (so it can be persisted in the DB)
 }
 
 func (g Game) getBoard() ([]int, error) {
