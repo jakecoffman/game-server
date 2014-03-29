@@ -76,11 +76,6 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 		return
 	}
 	playerId := p.(int)
-	game, player, err := gameService.GetGame(db, gameId, playerId)
-	if err != nil {
-		log.Printf("Could not get game and/or player: %#v", err)
-		return
-	}
 
 	// start a goroutine dedicated to listening to the websocket
 	wsReadChan := make(chan Message)
@@ -103,9 +98,97 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 		}
 	}()
 
+	_, player, err := gameService.GetGame(db, gameId, playerId)
+	if err != nil {
+		log.Printf("Unable to get game here: %#v", err)
+		return
+	}
+
 	if player.Role == Host {
-		HostConn(player, game, gameService, ws, wsReadChan, db)
+		hostRead := gameService.HostJoin(gameId)
+		defer gameService.HostLeave(gameId)
+
+		HostInit(playerId, gameId, gameService, ws, wsReadChan, db)
+
+		for {
+			select {
+			case msg, ok := <-wsReadChan: // player website action
+				if !ok {
+					return
+				}
+				handled := false
+				for msgType, action := range HostFromWeb {
+					if msgType == msg["type"] {
+						err = action(msg, gameId, playerId, gameService, ws, db, log)
+						if err != nil {
+							return
+						}
+						handled = true
+						break
+					}
+				}
+				if !handled {
+					log.Printf("Unknown web message from player: %#v", msg)
+				}
+			case msg := <-hostRead: // messages from host
+				handled := false
+				for msgType, action := range HostFromPlayer {
+					if msgType == msg["type"] {
+						err = action(msg, gameId, playerId, gameService, ws, db, log)
+						if err != nil {
+							return
+						}
+						handled = true
+						break
+					}
+				}
+				if !handled {
+					log.Printf("Unknown web message from player: %#v", msg)
+				}
+			}
+		}
 	} else {
-		PlayerConn(player, game, gameService, ws, wsReadChan, db)
+		playerRead, hostWrite := gameService.PlayerJoin(gameId, playerId)
+		defer gameService.PlayerLeave(gameId, playerId)
+
+		PlayerInit(playerId, gameId, gameService, ws, hostWrite, db)
+
+		for {
+			select {
+			case msg, ok := <-wsReadChan: // player website action
+				if !ok {
+					return
+				}
+				handled := false
+				for msgType, action := range PlayerFromWeb {
+					if msgType == msg["type"] {
+						err = action(msg, gameId, playerId, gameService, ws, hostWrite, db, log)
+						if err != nil {
+							return
+						}
+						handled = true
+						break
+					}
+				}
+				if !handled {
+					log.Printf("Unknown web message from player: %#v", msg)
+				}
+			case msg := <-playerRead: // server side message from player to host
+				handled := false
+				for msgType, action := range PlayerFromHost {
+					if msgType == msg["type"] {
+						err = action(msg, gameId, playerId, gameService, ws, hostWrite, db, log)
+						if err != nil {
+							return
+						}
+						handled = true
+						break
+					}
+				}
+				if !handled {
+					log.Printf("Unknown message from host: %#v", msg)
+				}
+			}
+		}
 	}
 }
