@@ -70,9 +70,7 @@ func PlayerInit(playerId int, gameId string, gameService GameService, ws *websoc
 
 	if game.State == "start" {
 		log.Printf("Player %#v rejoining game in play", playerId)
-		var board *TicTacToe_Board
-		err = db.SelectOne(board, "select * from tictactoe_board where game=?", gameId)
-		log.Printf("Got the board")
+		board, err := getBoard(gameId, db)
 		if err != nil {
 			log.Printf("Can't get TTT board: %#v", err)
 			return err
@@ -157,8 +155,7 @@ func HostInit(playerId int, gameId string, gameService GameService, ws *websocke
 	} else {
 		log.Printf("Host rejoining game in progress")
 		// get the game board so we can send an update
-		board := TicTacToe_Board{}
-		err = db.SelectOne(&board, "select * from tictactoe_board where game=?", gameId)
+		board, err := getBoard(gameId, db)
 		if err != nil {
 			log.Printf("Could not get board, this might not be an error: %#v", err)
 			return err
@@ -219,8 +216,9 @@ func hostState(msg Message, gameId string, playerId int, gs GameService, ws *web
 
 	// TODO: check to make sure this is a valid state
 	game.State = msg["state"].(string)
-	board := TicTacToe_Board{Game: gameId}
+	var board *TicTacToe_Board
 	if game.State == "start" {
+		board = &TicTacToe_Board{Game: gameId}
 		log.Printf("Setting up starting objects")
 		// we are starting a game, so insert a new board
 		err = board.setBoard([]int{0, 0, 0, 0, 0, 0, 0, 0, 0})
@@ -229,13 +227,13 @@ func hostState(msg Message, gameId string, playerId int, gs GameService, ws *web
 			return err
 		}
 		log.Printf("Inserting board: %#v", board)
-		err = db.Insert(&board)
+		err = db.Insert(board)
 		if err != nil {
 			log.Printf("Couldn't insert board: %#v", err)
 			return err
 		}
 	} else {
-		err = db.SelectOne(&board, "select * from tictactoe_board where game=?", gameId)
+		board, err = getBoard(gameId, db)
 		if err != nil {
 			log.Printf("Unable to get board: %#v", err)
 			return err
@@ -314,8 +312,7 @@ func hostMove(msg Message, gameId string, playerId int, gs GameService, ws *webs
 		return nil // not an error, just nothing to do
 	}
 
-	board := TicTacToe_Board{}
-	err = db.SelectOne(&board, "select * from tictactoe_board where game=?", gameId)
+	board, err := getBoard(gameId, db)
 	if err != nil {
 		log.Printf("Couldn't get board: %#v", err)
 		return err
@@ -351,7 +348,7 @@ func hostMove(msg Message, gameId string, playerId int, gs GameService, ws *webs
 	}
 
 	board.setBoard(niceBoard)
-	count, err := db.Update(&board)
+	count, err := db.Update(board)
 	if err != nil || count == 0 {
 		log.Printf("Unable to save board after move: %v", err)
 		return err
@@ -385,4 +382,11 @@ func hostMove(msg Message, gameId string, playerId int, gs GameService, ws *webs
 		"state": "start",
 	})
 	return nil
+}
+
+// helpers
+func getBoard(gameId string, db *gorp.DbMap) (*TicTacToe_Board, error) {
+	board := &TicTacToe_Board{}
+	err := db.SelectOne(board, "select * from tictactoe_board where game=?", gameId)
+	return board, err
 }

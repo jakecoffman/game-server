@@ -1,8 +1,10 @@
 package main
 
 import (
+	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/codegangsta/martini"
 	"github.com/coopernurse/gorp"
@@ -10,6 +12,18 @@ import (
 	"github.com/martini-contrib/render"
 	"github.com/martini-contrib/sessions"
 )
+
+func TicTacToeHandler() string {
+	file, err := os.Open("public/tictactoe.html")
+	if err != nil {
+		return err.Error()
+	}
+	bytes, err := ioutil.ReadAll(file)
+	if err != nil {
+		return err.Error()
+	}
+	return string(bytes)
+}
 
 // Creates a new game and player (the host)
 func NewGameHandler(r render.Render, db *gorp.DbMap, session sessions.Session, gameService GameService, log *log.Logger) {

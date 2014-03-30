@@ -8,21 +8,20 @@ var app = angular.module("app", ['ngRoute', 'ngResource', 'monospaced.qrcode'], 
 	});
 });
 
-app.controller("MainCtl", function($scope){
+app.controller("MainCtl", function(){
 	
-})
+});
 
-app.controller("HomeCtl", function($scope, $http, $location){
-	$scope.newGame = function(){
-		$http({
-			method: "post",
-			url: "/game"
-		}).success(function(data) {
-			$location.path("/game/" + data.uuid)
-		}).error(function(err) {
-			alert(err.message);
-		})
-	}
+app.controller("HomeCtl", function($http, $location){
+	console.log("HOME")
+	$http({
+		method: "post",
+		url: "/game"
+	}).success(function(data) {
+		$location.path("/game/" + data.uuid)
+	}).error(function(err) {
+		alert(err.message);
+	});
 });
 
 app.controller('GameCtl', function($scope, $http, $routeParams, $http){
