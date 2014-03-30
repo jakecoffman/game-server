@@ -85,7 +85,15 @@ app.controller('GameCtl', function($scope, $http, $routeParams, $http){
 						$scope.state = msg.state;
 					case "update":
 						$scope.state = msg.state;
-						$scope.board = msg.board;
+						var board = [];
+						for(var i=0; i<9; i++){
+							if(msg.board[i] == 0){
+								board.push(" ");
+							} else {
+								board.push("Player " + msg.board[i]);
+							}
+						};
+						$scope.board = board;
 						break;
 					default:
 						console.log("Unknown message type: " + msg.type);
