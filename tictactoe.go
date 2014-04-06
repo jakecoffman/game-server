@@ -40,7 +40,7 @@ func (g *TicTacToe_Board) setBoard(v []int) error {
 	return nil
 }
 
-type Action func(msg Message, gameId string, playerId int, gs GameService, ws *websocket.Conn, hostWrite chan Message, db *gorp.DbMap, log *log.Logger) error
+type Action func(msg Message, gameId string, playerId int, gs GameService, ws *websocket.Conn, db *gorp.DbMap, log *log.Logger) error
 
 // To define a game, all you need is to insert key-value pairs of message types to actions (handlers), and
 // provide PlayerInit and HostInit functions.
@@ -66,10 +66,10 @@ func init() {
 	}
 }
 
-func PlayerInit(playerId int, gameId string, gameService GameService, ws *websocket.Conn, hostWrite chan Message, db *gorp.DbMap) error {
+func PlayerInit(playerId int, gameId string, gs GameService, ws *websocket.Conn, db *gorp.DbMap) error {
 	log.Printf("Player is connected: %#v", playerId)
 
-	game, _, err := gameService.GetGame(db, gameId, playerId)
+	game, _, err := gs.GetGame(db, gameId, playerId)
 	if err != nil {
 		log.Printf("Couldn't get player and/or game")
 		return err
@@ -119,13 +119,13 @@ func PlayerInit(playerId int, gameId string, gameService GameService, ws *websoc
 		}
 	}
 
-	hostWrite <- Message{"type": "join"}
+	gs.SendHost(gameId, Message{"type": "join"})
 	return nil
 }
 
 // Called first when a host connects.
 // NOTE that this may be called multiple times as a host may drop and reconnect.
-func HostInit(playerId int, gameId string, gameService GameService, ws *websocket.Conn, wsReadChan chan Message, db *gorp.DbMap) error {
+func HostInit(playerId int, gameId string, gs GameService, ws *websocket.Conn, wsReadChan chan Message, db *gorp.DbMap) error {
 	log.Printf("Host initing")
 
 	// since host is always the first to connect, setup tables if they don't already exist
@@ -140,7 +140,7 @@ func HostInit(playerId int, gameId string, gameService GameService, ws *websocke
 	log.Printf("Tables created")
 
 	// get the game so we know what state we should be in
-	game, _, err := gameService.GetGame(db, gameId, playerId)
+	game, _, err := gs.GetGame(db, gameId, playerId)
 	if err != nil {
 		log.Printf("Host failed to get game: %#v", err)
 		return err
@@ -191,7 +191,7 @@ func HostInit(playerId int, gameId string, gameService GameService, ws *websocke
 	return nil
 }
 
-func playerMove(msg Message, gameId string, playerId int, gs GameService, ws *websocket.Conn, hostWrite chan Message, db *gorp.DbMap, log *log.Logger) error {
+func playerMove(msg Message, gameId string, playerId int, gs GameService, ws *websocket.Conn, db *gorp.DbMap, log *log.Logger) error {
 	log.Printf("Sending move to host")
 	turn := TicTacToe_Turn{}
 	err := db.SelectOne(&turn, "select * from tictactoe_turn where game=? and player=?", gameId, playerId)
@@ -210,17 +210,17 @@ func playerMove(msg Message, gameId string, playerId int, gs GameService, ws *we
 	}
 
 	// send notice to the host that we've moved so it can attempt to resolve the current round
-	hostWrite <- msg
+	gs.SendHost(gameId, msg)
 	return nil
 }
 
-func playerForward(msg Message, gameId string, playerId int, gs GameService, ws *websocket.Conn, hostChan chan Message, db *gorp.DbMap, log *log.Logger) error {
+func playerForward(msg Message, gameId string, playerId int, gs GameService, ws *websocket.Conn, db *gorp.DbMap, log *log.Logger) error {
 	log.Printf("Sending %v to player %v", msg["type"], playerId)
 	ws.WriteJSON(msg)
 	return nil
 }
 
-func hostState(msg Message, gameId string, playerId int, gs GameService, ws *websocket.Conn, _ chan Message, db *gorp.DbMap, log *log.Logger) error {
+func hostState(msg Message, gameId string, playerId int, gs GameService, ws *websocket.Conn, db *gorp.DbMap, log *log.Logger) error {
 	log.Printf("Got state change request from host: %v", msg["state"])
 
 	game, _, err := gs.GetGame(db, gameId, playerId)
@@ -280,7 +280,7 @@ func hostState(msg Message, gameId string, playerId int, gs GameService, ws *web
 	return nil
 }
 
-func hostJoinLeave(msg Message, gameId string, playerId int, gs GameService, ws *websocket.Conn, _ chan Message, db *gorp.DbMap, log *log.Logger) error {
+func hostJoinLeave(msg Message, gameId string, playerId int, gs GameService, ws *websocket.Conn, db *gorp.DbMap, log *log.Logger) error {
 	log.Printf("player %v", msg["type"])
 	// send a fresh list of players to the UI
 	var players []*Player
@@ -296,7 +296,7 @@ func hostJoinLeave(msg Message, gameId string, playerId int, gs GameService, ws 
 	return nil
 }
 
-func hostMove(msg Message, gameId string, playerId int, gs GameService, ws *websocket.Conn, _ chan Message, db *gorp.DbMap, log *log.Logger) error {
+func hostMove(msg Message, gameId string, playerId int, gs GameService, ws *websocket.Conn, db *gorp.DbMap, log *log.Logger) error {
 	log.Printf("Checking player move")
 
 	var players []*Player

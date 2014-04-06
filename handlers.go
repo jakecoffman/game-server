@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"runtime/pprof"
 
 	"github.com/codegangsta/martini"
 	"github.com/coopernurse/gorp"
@@ -12,6 +13,11 @@ import (
 	"github.com/martini-contrib/render"
 	"github.com/martini-contrib/sessions"
 )
+
+func DebugHandler(w http.ResponseWriter) {
+	profile := pprof.Lookup("goroutine")
+	profile.WriteTo(w, 1)
+}
 
 func TicTacToeHandler() string {
 	file, err := os.Open("public/tictactoe/index.html")
@@ -131,9 +137,10 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 			select {
 			case msg, ok := <-wsReadChan: // player website action
 				if !ok {
+					log.Printf("Read Channel closed!!11111")
 					return
 				}
-				handled, err := dispatchMessage(HostFromWeb, msg, gameId, playerId, gameService, ws, nil, db, log)
+				handled, err := dispatchMessage(HostFromWeb, msg, gameId, playerId, gameService, ws, db, log)
 				if err != nil {
 					log.Printf("Error while handling message from web to host: %#v", err)
 					return
@@ -142,7 +149,7 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 					log.Printf("Unknown message from web to host: %#v", msg)
 				}
 			case msg := <-hostRead: // messages from host
-				handled, err := dispatchMessage(HostFromPlayer, msg, gameId, playerId, gameService, ws, nil, db, log)
+				handled, err := dispatchMessage(HostFromPlayer, msg, gameId, playerId, gameService, ws, db, log)
 				if err != nil {
 					log.Printf("Error while handling message from player to host: %#v", err)
 					return
@@ -155,10 +162,10 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 	} else {
 		log.Printf("Player %v connected", playerId)
 
-		playerRead, hostWrite := gameService.PlayerJoin(gameId, playerId)
+		playerRead := gameService.PlayerJoin(gameId, playerId)
 		defer gameService.PlayerLeave(gameId, playerId)
 
-		PlayerInit(playerId, gameId, gameService, ws, hostWrite, db)
+		PlayerInit(playerId, gameId, gameService, ws, db)
 
 		for {
 			select {
@@ -166,7 +173,7 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 				if !ok {
 					return
 				}
-				handled, err := dispatchMessage(PlayerFromWeb, msg, gameId, playerId, gameService, ws, hostWrite, db, log)
+				handled, err := dispatchMessage(PlayerFromWeb, msg, gameId, playerId, gameService, ws, db, log)
 				if err != nil {
 					log.Printf("Error while handling message from web to player: %#v", err)
 					return
@@ -175,7 +182,7 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 					log.Printf("Unknown message from web to player: %#v", msg)
 				}
 			case msg := <-playerRead: // server side message from player to host
-				handled, err := dispatchMessage(PlayerFromHost, msg, gameId, playerId, gameService, ws, hostWrite, db, log)
+				handled, err := dispatchMessage(PlayerFromHost, msg, gameId, playerId, gameService, ws, db, log)
 				if err != nil {
 					log.Printf("Error while handling message from host to player: %#v", err)
 					return
@@ -188,11 +195,11 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 	}
 }
 
-func dispatchMessage(handleMap map[string]Action, msg Message, gameId string, playerId int, gs GameService, ws *websocket.Conn, hostWrite chan Message, db *gorp.DbMap, log *log.Logger) (bool, error) {
+func dispatchMessage(handleMap map[string]Action, msg Message, gameId string, playerId int, gs GameService, ws *websocket.Conn, db *gorp.DbMap, log *log.Logger) (bool, error) {
 	handled := false
 	for msgType, action := range handleMap {
 		if msgType == msg["type"] {
-			err := action(msg, gameId, playerId, gs, ws, hostWrite, db, log)
+			err := action(msg, gameId, playerId, gs, ws, db, log)
 			if err != nil {
 				return false, err
 			}

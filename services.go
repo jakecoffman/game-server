@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"log"
+	"sync"
 
 	"github.com/coopernurse/gorp"
 	"github.com/nu7hatch/gouuid"
@@ -14,9 +15,10 @@ type GameService interface {
 	GetGame(db *gorp.DbMap, gameId string, playerId int) (*Game, *Player, error)
 	HostJoin(gameId string) chan Message
 	HostLeave(gameId string)
-	PlayerJoin(gameId string, playerId int) (chan Message, chan Message)
+	PlayerJoin(gameId string, playerId int) chan Message
 	PlayerLeave(gameId string, playerId int)
 	Broadcast(gameId string, msg Message)
+	SendHost(gameId string, msg Message)
 }
 
 type Channels struct {
@@ -26,42 +28,73 @@ type Channels struct {
 
 // TODO: this all needs to be in a different package
 type GameServiceImpl struct {
+	sync.RWMutex
 	ChannelMap map[string]*Channels
 }
 
 func (gs *GameServiceImpl) HostJoin(gameId string) chan Message {
+	gs.Lock()
+	defer gs.Unlock()
+	log.Printf("HERE")
 	// host is usually first to join a game so most of the time this will be called
 	if gs.ChannelMap[gameId] == nil {
+		log.Printf("channel map created for game %v", gameId)
 		gs.ChannelMap[gameId] = &Channels{players: map[int]chan Message{}}
 	}
-	gs.ChannelMap[gameId].host = make(chan Message)
+	if gs.ChannelMap[gameId].host == nil {
+		log.Printf("Host connecting for first time")
+		gs.ChannelMap[gameId].host = make(chan Message)
+	}
 	return gs.ChannelMap[gameId].host
 }
 
 func (gs *GameServiceImpl) HostLeave(gameId string) {
-	close(gs.ChannelMap[gameId].host)
-	gs.ChannelMap[gameId].host = nil
+	log.Printf("Host disconnceted from game: %v", gameId)
+	// gs.Lock()
+	// defer gs.Unlock()
+
+	// close(gs.ChannelMap[gameId].host)
+	// gs.ChannelMap[gameId].host = nil
 }
 
-func (gs *GameServiceImpl) PlayerJoin(gameId string, playerId int) (chan Message, chan Message) {
+func (gs *GameServiceImpl) PlayerJoin(gameId string, playerId int) chan Message {
+	gs.Lock()
+	defer gs.Unlock()
 	// if the server restarts and a player rejoins before the host, this will be called
 	if gs.ChannelMap[gameId] == nil {
+		log.Printf("First player to connect to game is player %v", playerId)
 		gs.ChannelMap[gameId] = &Channels{players: map[int]chan Message{}}
 	}
-	gs.ChannelMap[gameId].host = make(chan Message)
 	gs.ChannelMap[gameId].players[playerId] = make(chan Message)
-	return gs.ChannelMap[gameId].players[playerId], gs.ChannelMap[gameId].host
+	return gs.ChannelMap[gameId].players[playerId]
 }
 
 func (gs *GameServiceImpl) PlayerLeave(gameId string, playerId int) {
+	gs.Lock()
+	defer gs.Unlock()
+
 	close(gs.ChannelMap[gameId].players[playerId])
 	delete(gs.ChannelMap[gameId].players, playerId)
 }
 
 func (gs *GameServiceImpl) Broadcast(gameId string, msg Message) {
+	gs.RLock()
+	defer gs.RUnlock()
+
 	for _, p := range gs.ChannelMap[gameId].players {
 		p <- msg
 	}
+}
+
+func (gs *GameServiceImpl) SendHost(gameId string, msg Message) {
+	gs.RLock()
+	defer gs.RUnlock()
+
+	if gs.ChannelMap[gameId].host == nil {
+		log.Printf("HOST NOT CONNECTED?!")
+	}
+
+	gs.ChannelMap[gameId].host <- msg
 }
 
 func (gs *GameServiceImpl) NewGame(db *gorp.DbMap) (*Game, *Player, error) {

@@ -19,6 +19,7 @@ func main() {
 	m.Use(sessions.Sessions("games", store))
 	m.Use(render.Renderer())
 
+	m.Get("/debug", DebugHandler)
 	m.Get("/tictactoe", TicTacToeHandler)
 	m.Post("/game", NewGameHandler)
 	m.Get("/game/:id", GetGameHandler)
