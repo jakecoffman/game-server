@@ -1,9 +1,9 @@
 var app = angular.module("app", ['ngRoute', 'ngResource', 'monospaced.qrcode'], function($routeProvider){
 	$routeProvider.when("/", {
-		templateUrl: "/home.html",
+		templateUrl: "/tictactoe/home.html",
 		controller: "HomeCtl"
 	}).when("/game/:id", {
-		templateUrl: "/game.html",
+		templateUrl: "/tictactoe/game.html",
 		controller: "GameCtl"
 	});
 });

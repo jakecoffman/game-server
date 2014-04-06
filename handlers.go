@@ -14,7 +14,7 @@ import (
 )
 
 func TicTacToeHandler() string {
-	file, err := os.Open("public/tictactoe.html")
+	file, err := os.Open("public/tictactoe/index.html")
 	if err != nil {
 		return err.Error()
 	}
@@ -82,7 +82,7 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 	defer ws.Close()
 	log.Println("Succesfully upgraded connection")
 
-	// get the player and game from the database
+	// get the player and game ids so the handers can get the game and player objects later
 	gameId := params["id"]
 	p := session.Get("player_id")
 	if p == nil {
@@ -119,9 +119,12 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 	}
 
 	if player.Role == Host {
+		log.Printf("Host (player %v) has connected", playerId)
+
 		hostRead := gameService.HostJoin(gameId)
 		defer gameService.HostLeave(gameId)
 
+		log.Printf("Initializing host")
 		HostInit(playerId, gameId, gameService, ws, wsReadChan, db)
 
 		for {
@@ -130,38 +133,28 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 				if !ok {
 					return
 				}
-				handled := false
-				for msgType, action := range HostFromWeb {
-					if msgType == msg["type"] {
-						err = action(msg, gameId, playerId, gameService, ws, db, log)
-						if err != nil {
-							return
-						}
-						handled = true
-						break
-					}
+				handled, err := dispatchMessage(HostFromWeb, msg, gameId, playerId, gameService, ws, nil, db, log)
+				if err != nil {
+					log.Printf("Error while handling message from web to host: %#v", err)
+					return
 				}
 				if !handled {
-					log.Printf("Unknown web message from player: %#v", msg)
+					log.Printf("Unknown message from web to host: %#v", msg)
 				}
 			case msg := <-hostRead: // messages from host
-				handled := false
-				for msgType, action := range HostFromPlayer {
-					if msgType == msg["type"] {
-						err = action(msg, gameId, playerId, gameService, ws, db, log)
-						if err != nil {
-							return
-						}
-						handled = true
-						break
-					}
+				handled, err := dispatchMessage(HostFromPlayer, msg, gameId, playerId, gameService, ws, nil, db, log)
+				if err != nil {
+					log.Printf("Error while handling message from player to host: %#v", err)
+					return
 				}
 				if !handled {
-					log.Printf("Unknown web message from player: %#v", msg)
+					log.Printf("Unknown message from player to host: %#v", msg)
 				}
 			}
 		}
 	} else {
+		log.Printf("Player %v connected", playerId)
+
 		playerRead, hostWrite := gameService.PlayerJoin(gameId, playerId)
 		defer gameService.PlayerLeave(gameId, playerId)
 
@@ -173,36 +166,39 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 				if !ok {
 					return
 				}
-				handled := false
-				for msgType, action := range PlayerFromWeb {
-					if msgType == msg["type"] {
-						err = action(msg, gameId, playerId, gameService, ws, hostWrite, db, log)
-						if err != nil {
-							return
-						}
-						handled = true
-						break
-					}
+				handled, err := dispatchMessage(PlayerFromWeb, msg, gameId, playerId, gameService, ws, hostWrite, db, log)
+				if err != nil {
+					log.Printf("Error while handling message from web to player: %#v", err)
+					return
 				}
 				if !handled {
-					log.Printf("Unknown web message from player: %#v", msg)
+					log.Printf("Unknown message from web to player: %#v", msg)
 				}
 			case msg := <-playerRead: // server side message from player to host
-				handled := false
-				for msgType, action := range PlayerFromHost {
-					if msgType == msg["type"] {
-						err = action(msg, gameId, playerId, gameService, ws, hostWrite, db, log)
-						if err != nil {
-							return
-						}
-						handled = true
-						break
-					}
+				handled, err := dispatchMessage(PlayerFromHost, msg, gameId, playerId, gameService, ws, hostWrite, db, log)
+				if err != nil {
+					log.Printf("Error while handling message from host to player: %#v", err)
+					return
 				}
 				if !handled {
-					log.Printf("Unknown message from host: %#v", msg)
+					log.Printf("Unknown message from host to player: %#v", msg)
 				}
 			}
 		}
 	}
+}
+
+func dispatchMessage(handleMap map[string]Action, msg Message, gameId string, playerId int, gs GameService, ws *websocket.Conn, hostWrite chan Message, db *gorp.DbMap, log *log.Logger) (bool, error) {
+	handled := false
+	for msgType, action := range handleMap {
+		if msgType == msg["type"] {
+			err := action(msg, gameId, playerId, gs, ws, hostWrite, db, log)
+			if err != nil {
+				return false, err
+			}
+			handled = true
+			break
+		}
+	}
+	return handled, nil
 }

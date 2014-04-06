@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 
 	"github.com/codegangsta/martini"
 	"github.com/coopernurse/gorp"
@@ -24,6 +25,7 @@ func main() {
 	m.Get("/ws/:id", WebsocketHandler)
 
 	m.Map(initDb("dev.db"))
+	fmt.Printf("Creating game service")
 	m.MapTo(&GameServiceImpl{ChannelMap: map[string]*Channels{}}, (*GameService)(nil))
 
 	m.Run()

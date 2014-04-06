@@ -30,6 +30,10 @@ type GameServiceImpl struct {
 }
 
 func (gs *GameServiceImpl) HostJoin(gameId string) chan Message {
+	// host is usually first to join a game so most of the time this will be called
+	if gs.ChannelMap[gameId] == nil {
+		gs.ChannelMap[gameId] = &Channels{players: map[int]chan Message{}}
+	}
 	gs.ChannelMap[gameId].host = make(chan Message)
 	return gs.ChannelMap[gameId].host
 }
@@ -40,6 +44,11 @@ func (gs *GameServiceImpl) HostLeave(gameId string) {
 }
 
 func (gs *GameServiceImpl) PlayerJoin(gameId string, playerId int) (chan Message, chan Message) {
+	// if the server restarts and a player rejoins before the host, this will be called
+	if gs.ChannelMap[gameId] == nil {
+		gs.ChannelMap[gameId] = &Channels{players: map[int]chan Message{}}
+	}
+	gs.ChannelMap[gameId].host = make(chan Message)
 	gs.ChannelMap[gameId].players[playerId] = make(chan Message)
 	return gs.ChannelMap[gameId].players[playerId], gs.ChannelMap[gameId].host
 }
@@ -76,8 +85,6 @@ func (gs *GameServiceImpl) NewGame(db *gorp.DbMap) (*Game, *Player, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-
-	gs.ChannelMap[game.Id] = &Channels{players: map[int]chan Message{}}
 
 	return game, player, nil
 }
