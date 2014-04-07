@@ -32,8 +32,8 @@ func TicTacToeHandler() string {
 }
 
 // Creates a new game and player (the host)
-func NewGameHandler(r render.Render, db *gorp.DbMap, session sessions.Session, gameService GameService, log *log.Logger) {
-	game, player, err := gameService.NewGame(db)
+func NewGameHandler(r render.Render, db *gorp.DbMap, session sessions.Session, gs GameService, log *log.Logger) {
+	game, player, err := gs.NewGame(db)
 	if err != nil {
 		log.Printf("Failed to create game: %v", err)
 		r.JSON(500, Message{"message": "Failed to create game"})
@@ -50,13 +50,13 @@ func NewGameHandler(r render.Render, db *gorp.DbMap, session sessions.Session, g
 
 // this resource is hit first before a player can connect with websockets, partially due to the session not being able to be set
 // on the websocket handler
-func GetGameHandler(r render.Render, params martini.Params, db *gorp.DbMap, gameService GameService, session sessions.Session, log *log.Logger) {
+func GetGameHandler(r render.Render, params martini.Params, db *gorp.DbMap, gs GameService, session sessions.Session, log *log.Logger) {
 	// get the game from the DB
 	gameId := params["id"]
 	// and the player from the session
 	obj := session.Get("player_id")
 
-	_, player, err := gameService.ConnectToGame(db, gameId, obj)
+	_, player, err := gs.ConnectToGame(db, gameId, obj)
 	if err != nil {
 		log.Printf("Failed to connect to game: %v", err)
 		r.JSON(500, Message{"message": "Failed to connect to game"})
@@ -75,7 +75,7 @@ func GetGameHandler(r render.Render, params martini.Params, db *gorp.DbMap, game
 }
 
 // handles the websocket connections for the game
-func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request, params martini.Params, db *gorp.DbMap, gameService GameService, session sessions.Session, log *log.Logger) {
+func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request, params martini.Params, db *gorp.DbMap, gs GameService, session sessions.Session, log *log.Logger) {
 	// upgrade to websocket
 	ws, err := websocket.Upgrade(w, req, nil, 1024, 1024)
 	if _, ok := err.(websocket.HandshakeError); ok {
@@ -106,6 +106,8 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 			err := ws.ReadJSON(&msg)
 			if err != nil {
 				log.Printf("Error message from websocket: %#v", err)
+				close(wsReadChan) // causes all of the goroutines waiting on this to stop
+				wsReadChan = nil
 				return
 			}
 			log.Printf("Got message: %v", msg)
@@ -113,12 +115,12 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 		}
 	}()
 	defer func() {
-		if _, ok := <-wsReadChan; !ok {
+		if wsReadChan != nil {
 			close(wsReadChan)
 		}
 	}()
 
-	_, player, err := gameService.GetGame(db, gameId, playerId)
+	_, player, err := gs.GetGame(db, gameId, playerId)
 	if err != nil {
 		log.Printf("Unable to get game here: %#v", err)
 		return
@@ -127,11 +129,10 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 	if player.Role == Host {
 		log.Printf("Host (player %v) has connected", playerId)
 
-		hostRead := gameService.HostJoin(gameId)
-		defer gameService.HostLeave(gameId)
+		hostRead := gs.HostJoin(gameId)
 
 		log.Printf("Initializing host")
-		HostInit(playerId, gameId, gameService, ws, wsReadChan, db)
+		HostInit(playerId, gameId, gs, ws, wsReadChan, db)
 
 		for {
 			select {
@@ -140,7 +141,7 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 					log.Printf("Read Channel closed!!11111")
 					return
 				}
-				handled, err := dispatchMessage(HostFromWeb, msg, gameId, playerId, gameService, ws, db, log)
+				handled, err := dispatchMessage(HostFromWeb, msg, gameId, playerId, gs, ws, db, log)
 				if err != nil {
 					log.Printf("Error while handling message from web to host: %#v", err)
 					return
@@ -149,7 +150,7 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 					log.Printf("Unknown message from web to host: %#v", msg)
 				}
 			case msg := <-hostRead: // messages from host
-				handled, err := dispatchMessage(HostFromPlayer, msg, gameId, playerId, gameService, ws, db, log)
+				handled, err := dispatchMessage(HostFromPlayer, msg, gameId, playerId, gs, ws, db, log)
 				if err != nil {
 					log.Printf("Error while handling message from player to host: %#v", err)
 					return
@@ -162,10 +163,11 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 	} else {
 		log.Printf("Player %v connected", playerId)
 
-		playerRead := gameService.PlayerJoin(gameId, playerId)
-		defer gameService.PlayerLeave(gameId, playerId)
+		playerRead := gs.PlayerJoin(gameId, playerId)
+		defer gs.PlayerLeave(gameId, playerId)
+		defer PlayerLeave(playerId, gameId, gs, ws, db)
 
-		PlayerInit(playerId, gameId, gameService, ws, db)
+		PlayerInit(playerId, gameId, gs, ws, db)
 
 		for {
 			select {
@@ -173,7 +175,7 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 				if !ok {
 					return
 				}
-				handled, err := dispatchMessage(PlayerFromWeb, msg, gameId, playerId, gameService, ws, db, log)
+				handled, err := dispatchMessage(PlayerFromWeb, msg, gameId, playerId, gs, ws, db, log)
 				if err != nil {
 					log.Printf("Error while handling message from web to player: %#v", err)
 					return
@@ -182,7 +184,7 @@ func WebsocketHandler(r render.Render, w http.ResponseWriter, req *http.Request,
 					log.Printf("Unknown message from web to player: %#v", msg)
 				}
 			case msg := <-playerRead: // server side message from player to host
-				handled, err := dispatchMessage(PlayerFromHost, msg, gameId, playerId, gameService, ws, db, log)
+				handled, err := dispatchMessage(PlayerFromHost, msg, gameId, playerId, gs, ws, db, log)
 				if err != nil {
 					log.Printf("Error while handling message from host to player: %#v", err)
 					return

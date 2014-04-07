@@ -123,6 +123,10 @@ func PlayerInit(playerId int, gameId string, gs GameService, ws *websocket.Conn,
 	return nil
 }
 
+func PlayerLeave(playerId int, gameId string, gs GameService, ws *websocket.Conn, db *gorp.DbMap) {
+	gs.SendHost(gameId, Message{"type": "leave"})
+}
+
 // Called first when a host connects.
 // NOTE that this may be called multiple times as a host may drop and reconnect.
 func HostInit(playerId int, gameId string, gs GameService, ws *websocket.Conn, wsReadChan chan Message, db *gorp.DbMap) error {
@@ -150,14 +154,14 @@ func HostInit(playerId int, gameId string, gs GameService, ws *websocket.Conn, w
 
 	if game.State == "lobby" {
 		log.Printf("Game is still in lobby")
-		// get the other players that are in the game so we can update the lobby
-		var players []*Player
-		_, err = db.Select(&players, "select * from players where game=?", gameId)
-		if err != nil {
-			log.Printf("Unable to find players in game: %#v", err)
-			return err
+
+		// update the lobby based on players that are currently connected
+		pids := gs.GetConnectedPlayers(gameId)
+		// angular wants an array of objects, it can't handle an array of ints
+		players := []Message{}
+		for _, pid := range pids {
+			players = append(players, Message{"id": pid})
 		}
-		log.Printf("Found %v players in game", len(players))
 
 		ws.WriteJSON(Message{
 			"type":    "players",
@@ -283,12 +287,14 @@ func hostState(msg Message, gameId string, playerId int, gs GameService, ws *web
 func hostJoinLeave(msg Message, gameId string, playerId int, gs GameService, ws *websocket.Conn, db *gorp.DbMap, log *log.Logger) error {
 	log.Printf("player %v", msg["type"])
 	// send a fresh list of players to the UI
-	var players []*Player
-	_, err := db.Select(&players, "select * from players where game=?", gameId)
-	if err != nil {
-		log.Printf("Failed to select players for game %v", gameId)
-		return err
+
+	pids := gs.GetConnectedPlayers(gameId)
+	// angular wants an array of objects, it can't handle an array of ints
+	players := []Message{}
+	for _, pid := range pids {
+		players = append(players, Message{"id": pid})
 	}
+
 	ws.WriteJSON(Message{
 		"type":    "players",
 		"players": players,

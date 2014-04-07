@@ -14,11 +14,11 @@ type GameService interface {
 	ConnectToGame(db *gorp.DbMap, gameId string, playerObj interface{}) (*Game, *Player, error)
 	GetGame(db *gorp.DbMap, gameId string, playerId int) (*Game, *Player, error)
 	HostJoin(gameId string) chan Message
-	HostLeave(gameId string)
 	PlayerJoin(gameId string, playerId int) chan Message
 	PlayerLeave(gameId string, playerId int)
 	Broadcast(gameId string, msg Message)
 	SendHost(gameId string, msg Message)
+	GetConnectedPlayers(gameId string) []int
 }
 
 type Channels struct {
@@ -46,15 +46,6 @@ func (gs *GameServiceImpl) HostJoin(gameId string) chan Message {
 		gs.ChannelMap[gameId].host = make(chan Message)
 	}
 	return gs.ChannelMap[gameId].host
-}
-
-func (gs *GameServiceImpl) HostLeave(gameId string) {
-	log.Printf("Host disconnceted from game: %v", gameId)
-	// gs.Lock()
-	// defer gs.Unlock()
-
-	// close(gs.ChannelMap[gameId].host)
-	// gs.ChannelMap[gameId].host = nil
 }
 
 func (gs *GameServiceImpl) PlayerJoin(gameId string, playerId int) chan Message {
@@ -95,6 +86,17 @@ func (gs *GameServiceImpl) SendHost(gameId string, msg Message) {
 	}
 
 	gs.ChannelMap[gameId].host <- msg
+}
+
+func (gs *GameServiceImpl) GetConnectedPlayers(gameId string) []int {
+	gs.RLock()
+	defer gs.RUnlock()
+
+	players := []int{}
+	for pid, _ := range gs.ChannelMap[gameId].players {
+		players = append(players, pid)
+	}
+	return players
 }
 
 func (gs *GameServiceImpl) NewGame(db *gorp.DbMap) (*Game, *Player, error) {
