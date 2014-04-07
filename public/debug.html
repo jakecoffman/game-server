@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+<head>
+	<link href="http://netdna.bootstrapcdn.com/bootstrap/3.0.3/css/bootstrap.min.css" rel="stylesheet">
+	<!-- <link href="http://netdna.bootstrapcdn.com/bootswatch/3.1.1/superhero/bootstrap.min.css" rel="stylesheet"> -->
+	<link href="http://netdna.bootstrapcdn.com/bootswatch/3.1.1/darkly/bootstrap.min.css" rel="stylesheet">
+	<link href="http://netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.min.css" rel="stylesheet">
+	<link href="/static/css/style.css" rel="stylesheet">
+	<script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.12/angular.min.js"></script>
+</head>
+<body>
+<pre ng-app="debug" ng-controller="debugC" style="font-size:0.7em;">{{data}}</pre>
+<script>
+	var app = angular.module("debug", []);
+
+	app.controller('debugC', ['$scope', '$http', function($scope, $http){
+		$http.get('/debug').then(function(r){
+			$scope.data = r.data;
+		});
+	}]);
+</script>
+</body>
+</html>
