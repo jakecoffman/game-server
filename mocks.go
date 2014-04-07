@@ -89,8 +89,8 @@ func (m *MockGameService) HostLeave(gameId string) {
 
 }
 
-func (m *MockGameService) PlayerJoin(gameId string, playerId int) (chan Message, chan Message) {
-	return nil, nil
+func (m *MockGameService) PlayerJoin(gameId string, playerId int) chan Message {
+	return nil
 }
 
 func (m *MockGameService) PlayerLeave(gameId string, playerId int) {
@@ -99,4 +99,12 @@ func (m *MockGameService) PlayerLeave(gameId string, playerId int) {
 
 func (m *MockGameService) Broadcast(gameId string, msg Message) {
 
+}
+
+func (m *MockGameService) SendHost(gameId string, msg Message) {
+
+}
+
+func (m *MockGameService) GetConnectedPlayers(gameId string) []int {
+	return nil
 }

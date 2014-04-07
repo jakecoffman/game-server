@@ -16,16 +16,16 @@ func Test_GameService(t *testing.T) {
 		return
 	}
 	hostRead := gs.HostJoin(game.Id)
-	defer gs.HostLeave(game.Id)
+
 	if hostRead == nil {
 		t.Errorf("Failed to initialize host channels")
 		return
 	}
 
-	playerRead, hostWrite := gs.PlayerJoin(game.Id, player.Id)
+	playerRead := gs.PlayerJoin(game.Id, player.Id)
 	defer gs.PlayerLeave(game.Id, player.Id)
 
-	if playerRead == nil || hostWrite == nil {
+	if playerRead == nil {
 		t.Errorf("Failed to initialize player channels")
 		return
 	}
@@ -35,7 +35,7 @@ func Test_GameService(t *testing.T) {
 	go func() {
 		actual = <-hostRead
 	}()
-	hostWrite <- expected
+	gs.SendHost(game.Id, expected)
 
 	if actual["hi"] != expected["hi"] {
 		t.Errorf("Couldn't send from player to host")
