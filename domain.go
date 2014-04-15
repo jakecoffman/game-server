@@ -19,6 +19,7 @@ type Player struct {
 type Game struct {
 	Id    string `json:"id"` // UUID
 	State string `json:"state"`
+	Type  string `json:"type"` // type of game (tictactoe, trivia, etc)
 }
 
 type Message map[string]interface{}

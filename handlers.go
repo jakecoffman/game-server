@@ -32,8 +32,14 @@ func TicTacToeHandler() string {
 }
 
 // Creates a new game and player (the host)
-func NewGameHandler(r render.Render, db *gorp.DbMap, session sessions.Session, gs GameService, log *log.Logger) {
-	game, player, err := gs.NewGame(db)
+func NewGameHandler(r render.Render, params martini.Params, db *gorp.DbMap, session sessions.Session, gs GameService, log *log.Logger) {
+	gameType, ok := params["game"]
+	if !ok {
+		log.Printf("Failed to get game type when creating game")
+		r.JSON(400, Message{"message": "Provide a `game`"})
+		return
+	}
+	game, player, err := gs.NewGame(gameType, db)
 	if err != nil {
 		log.Printf("Failed to create game: %v", err)
 		r.JSON(500, Message{"message": "Failed to create game"})

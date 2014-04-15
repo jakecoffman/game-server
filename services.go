@@ -10,7 +10,7 @@ import (
 )
 
 type GameService interface {
-	NewGame(db *gorp.DbMap) (*Game, *Player, error)
+	NewGame(gameType string, db *gorp.DbMap) (*Game, *Player, error)
 	ConnectToGame(db *gorp.DbMap, gameId string, playerObj interface{}) (*Game, *Player, error)
 	GetGame(db *gorp.DbMap, gameId string, playerId int) (*Game, *Player, error)
 	HostJoin(gameId string) chan Message
@@ -99,12 +99,12 @@ func (gs *GameServiceImpl) GetConnectedPlayers(gameId string) []int {
 	return players
 }
 
-func (gs *GameServiceImpl) NewGame(db *gorp.DbMap) (*Game, *Player, error) {
+func (gs *GameServiceImpl) NewGame(gameType string, db *gorp.DbMap) (*Game, *Player, error) {
 	u, err := uuid.NewV4()
 	if err != nil {
 		return nil, nil, err
 	}
-	game := &Game{Id: u.String(), State: "lobby"}
+	game := &Game{Id: u.String(), State: "lobby", Type: gameType}
 
 	err = db.Insert(game)
 	if err != nil {

@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html ng-app="app">
 <head>
 	<link href="http://netdna.bootstrapcdn.com/bootstrap/3.0.3/css/bootstrap.min.css" rel="stylesheet">
 	<!-- <link href="http://netdna.bootstrapcdn.com/bootswatch/3.1.1/superhero/bootstrap.min.css" rel="stylesheet"> -->
@@ -8,25 +8,14 @@
 	<link href="/static/css/style.css" rel="stylesheet">
 	<script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.4/angular.min.js"></script>
 </head>
-<body>
-<div class="jumbotron">
-	<h1>Local Multiplayer</h1>
-</div>
-<center>
-	<a class="btn btn-primary btn-lg" href="/tictactoe">
-		Start TicTacToe
-	</a>
-
-	<br/>
-	<br/>
-
-	<a class="btn btn-primary btn-lg" href="/trivia">
-		Start Trivia
-	</a>
-</center>
+<body ng-controller="MainCtl">
+<div ng-view></div>
 <script src="//code.jquery.com/jquery-1.10.1.min.js"></script>
 <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.4/angular-route.min.js"></script>
 <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.4/angular-resource.min.js"></script>
 <script src="//cdnjs.cloudflare.com/ajax/libs/angular-ui/0.4.0/angular-ui.min.js"></script>
+<script src="/static/js/lib/qrcode.js"></script>
+<script src="/static/js/qrcode.js"></script>
+<script src="/trivia/app.js"></script>
 </body>
 </html>

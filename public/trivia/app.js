@@ -16,7 +16,7 @@ app.controller("HomeCtl", function($http, $location){
 	console.log("HOME")
 	$http({
 		method: "post",
-		url: "/new/tictactoe"
+		url: "/new/trivia"
 	}).success(function(data) {
 		$location.path("/game/" + data.uuid)
 	}).error(function(err) {

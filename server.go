@@ -21,7 +21,7 @@ func main() {
 
 	m.Get("/debug", DebugHandler)
 	m.Get("/tictactoe", TicTacToeHandler)
-	m.Post("/game", NewGameHandler)
+	m.Post("/new/:game", NewGameHandler)
 	m.Get("/game/:id", GetGameHandler)
 	m.Get("/ws/:id", WebsocketHandler)
 

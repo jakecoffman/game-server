@@ -1,0 +1,85 @@
+<div class="container" ng-show="state=='waiting'">
+	<div class="row">
+		<h1>Waiting for server to respond</h1>
+	</div>
+</div>
+<div class="container" ng-show="state=='error'">
+	<div class="row">
+		<h1>Error</h1>
+		<p>Guru Meditation</p>
+		<pre>{{error}}</pre>
+	</div>
+</div>
+<div class="container" ng-show="state=='closed'">
+	<div class="row">
+		<h1>Closed</h1>
+		<p>Connection was closed, refresh to reconnect</p>
+	</div>
+</div>
+<div class="container" ng-show="state=='lobby' && isHost == true">
+	<div class="row">
+		<h1>Waiting for players</h1>
+		<p>Scan this code to join or enter this URL manually:</p>
+		<p>
+			<a href="http://{{url}}/tictactoe#/game/{{id}}">http://{{url}}/tictactoe#/game/{{id}}</a>
+		</p>
+		
+		<div class="col-sm-9">
+			<qrcode data="http://{{url}}/tictactoe/game/{{id}}" version="5" size="300"></qrcode>
+		</div>
+		<div class="col-sm-3">
+			<button class="btn btn-primary btn-lg" ng-click="start()">Start game</button>
+		</div>	
+	</div>
+	<div class="row">
+		<h2>Players Connected</h2>
+		<ul>
+			<li ng-repeat="player in players">Player {{player.id}}</li>
+		</ul>
+	</div>
+</div>
+<div class="container" ng-show="state=='lobby' && isHost == false">
+	<div class="row">
+		Welcome, player!
+	</div>
+</div>
+<div class="container" ng-show="state=='start' && isHost == true" id="host">
+	<div style="margin-top: 200px"></div>
+	<div class="row">
+		<div class="col-xs-4"><button class="btn btn-primary form-control">{{board[0]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control">{{board[1]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control">{{board[2]}}</button></div>
+	</div>
+	<br/>
+	<div class="row">
+		<div class="col-xs-4"><button class="btn btn-primary form-control">{{board[3]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control">{{board[4]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control">{{board[5]}}</button></div>
+	</div>
+	<br/>
+	<div class="row">
+		<div class="col-xs-4"><button class="btn btn-primary form-control">{{board[6]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control">{{board[7]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control">{{board[8]}}</button></div>
+	</div>
+	</div>
+</div>
+<div class="container" ng-show="state=='start' && isHost == false">
+	<div class="row">
+		<div class="col-xs-4"><button class="btn btn-primary form-control" ng-click="move(0)">{{board[0]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control" ng-click="move(1)">{{board[1]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control" ng-click="move(2)">{{board[2]}}</button></div>
+	</div>
+	<br/>
+	<div class="row">
+		<div class="col-xs-4"><button class="btn btn-primary form-control" ng-click="move(3)">{{board[3]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control" ng-click="move(4)">{{board[4]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control" ng-click="move(5)">{{board[5]}}</button></div>
+	</div>
+	<br/>
+	<div class="row">
+		<div class="col-xs-4"><button class="btn btn-primary form-control" ng-click="move(6)">{{board[6]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control" ng-click="move(7)">{{board[7]}}</button></div>
+		<div class="col-xs-4"><button class="btn btn-primary form-control" ng-click="move(8)">{{board[8]}}</button></div>
+	</div>
+</div>
